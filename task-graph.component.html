@@ -1,8 +1,138 @@
-<app-graph-camera class="task-graph__camera">
-  <markdown
-    [data]="flowMarkdown()"
-    mermaid
-    [mermaidOptions]="mermaidOptions"
-    class="task-graph__mermaid"
-  ></markdown>
-</app-graph-camera>
+<div class="task-graph__layout" [class.task-graph__layout--with-inspector]="showInspector()">
+  <div class="task-graph__graph">
+    <app-graph-camera class="task-graph__camera" (userInteract)="onUserInteract()">
+      <markdown
+        [data]="flowMarkdown()"
+        mermaid
+        [mermaidOptions]="mermaidOptions"
+        class="task-graph__mermaid"
+      ></markdown>
+    </app-graph-camera>
+
+    @if (showRecenterChip()) {
+      <button type="button" class="task-graph__recenter" (click)="resumeFollow()">
+        Re-center on running
+      </button>
+    }
+  </div>
+
+  @if (showInspector()) {
+    <aside class="task-graph__inspector">
+      @if (selectedNode(); as node) {
+        <div class="task-graph__node-heading" [attr.data-status]="node.status">
+          <span class="task-graph__status-dot"></span>
+          <div>
+            <h4>{{ node.title }}</h4>
+            <p>{{ node.id }} - {{ node.status }}</p>
+          </div>
+        </div>
+
+        <dl class="task-graph__node-meta">
+          @if (node.type) {
+            <div>
+              <dt>Type</dt>
+              <dd>{{ node.type }}</dd>
+            </div>
+          }
+          @if (node.startedAt) {
+            <div>
+              <dt>Started</dt>
+              <dd>{{ node.startedAt | date : 'mediumTime' }}</dd>
+            </div>
+          }
+          @if (node.endedAt) {
+            <div>
+              <dt>Ended</dt>
+              <dd>{{ node.endedAt | date : 'mediumTime' }}</dd>
+            </div>
+          }
+          @if (node.durationMs != null) {
+            <div>
+              <dt>Duration</dt>
+              <dd>{{ node.durationMs / 1000 | number : '1.1-2' }}s</dd>
+            </div>
+          }
+          @if (node.progressPercent != null) {
+            <div>
+              <dt>Progress</dt>
+              <dd>{{ node.progressPercent | number : '1.0-0' }}%</dd>
+            </div>
+          }
+        </dl>
+
+        @if (node.progressPercent != null) {
+          <div class="task-graph__progress">
+            <div class="task-graph__progress-bar" [style.width.%]="node.progressPercent"></div>
+          </div>
+          @if (node.progressLabel) {
+            <p class="task-graph__progress-label">{{ node.progressLabel }}</p>
+          }
+        }
+
+        @if (node.detail || node.error) {
+          <pre class="task-graph__node-detail">{{ node.detail || node.error }}</pre>
+        } @else {
+          <p class="task-graph__empty-detail">No detail has been published for this node yet.</p>
+        }
+
+        @for (group of selectedNodeRefGroups(); track group.kind) {
+          <div class="task-graph__ref-section">
+            <h5>{{ group.title }}</h5>
+            @for (ref of group.refs; track ref.id) {
+              <button
+                type="button"
+                class="task-graph__ref-row"
+                [class.selected]="isSelectedRef(node.id, group.kind, ref.id)"
+                (click)="openNodeRef(node.id, group.kind, ref)"
+              >
+                <code>{{ readRefLabel(ref) }}</code>
+                <span>{{ readRefSummary(ref) }}</span>
+                @if (readRefPath(ref); as refPath) {
+                  <small>{{ refPath }}</small>
+                }
+              </button>
+            }
+          </div>
+        } @empty {
+          <p class="task-graph__empty-detail">No refs have been published for this node yet.</p>
+        }
+
+        @if (selectedRefLoading()) {
+          <div class="task-graph__ref-preview">
+            <h5>Preview</h5>
+            <p>Loading ref...</p>
+          </div>
+        } @else if (selectedRefError()) {
+          <div class="task-graph__ref-preview error">
+            <h5>Preview</h5>
+            <p>{{ selectedRefError() }}</p>
+          </div>
+        } @else if (selectedRefContent(); as refContent) {
+          <div class="task-graph__ref-preview">
+            <div class="task-graph__ref-preview-heading">
+              <h5>{{ readRefLabel(refContent.ref) }}</h5>
+              @if (refContent.truncated) {
+                <span>truncated</span>
+              }
+            </div>
+            @if (refContent.path) {
+              <small>{{ refContent.path }}</small>
+            }
+            <pre>{{ selectedRefDisplayText() }}</pre>
+          </div>
+        }
+
+        @if (node.dependencies && node.dependencies.length > 0) {
+          <div class="task-graph__dependencies">
+            <span>Depends on</span>
+            @for (dependency of node.dependencies; track dependency) {
+              <code>{{ dependency }}</code>
+            }
+          </div>
+        }
+      } @else {
+        <p class="task-graph__empty-detail">Select a node to inspect it.</p>
+      }
+    </aside>
+  }
+</div>
