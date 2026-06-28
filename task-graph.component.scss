@@ -35,6 +35,21 @@
   cursor: pointer;
 }
 
+// Node labels sit inside the `click` anchor. Anchors start a link/ghost drag and
+// suppress selection, so a press-drag on node text does nothing. Disable link
+// dragging and force the label text selectable (edge labels have no anchor).
+:host ::ng-deep .mermaid .node a {
+  -webkit-user-drag: none;
+}
+
+:host ::ng-deep .mermaid .node a,
+:host ::ng-deep .mermaid .node foreignObject,
+:host ::ng-deep .mermaid .node .nodeLabel,
+:host ::ng-deep .mermaid .node span {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 :host ::ng-deep .mermaid .node .basic,
 :host ::ng-deep .mermaid .node .label-container,
 :host ::ng-deep .mermaid .node polygon,
