@@ -1,0 +1,115 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 16rem;
+  border-radius: 6px;
+  background: var(--mat-sys-surface);
+  border: 1px solid var(--mat-sys-outline-variant);
+}
+
+.task-graph__camera {
+  width: 100%;
+  height: 100%;
+}
+
+.task-graph__mermaid {
+  display: block;
+  padding: 0.75rem;
+}
+
+// ── Mermaid render ─────────────────────────────────────────────────
+
+:host ::ng-deep .mermaid {
+  display: flex;
+  justify-content: center;
+}
+
+:host ::ng-deep .mermaid svg {
+  // The camera owns sizing/zoom; let the SVG keep its intrinsic size.
+  max-width: none;
+  height: auto;
+}
+
+:host ::ng-deep .mermaid .node.clickable {
+  cursor: pointer;
+}
+
+:host ::ng-deep .mermaid .node .basic,
+:host ::ng-deep .mermaid .node .label-container,
+:host ::ng-deep .mermaid .node polygon,
+:host ::ng-deep .mermaid .node rect {
+  transition:
+    fill 140ms ease,
+    stroke 140ms ease,
+    stroke-width 140ms ease,
+    filter 140ms ease;
+}
+
+:host ::ng-deep .mermaid .node:hover .basic,
+:host ::ng-deep .mermaid .node:hover .label-container,
+:host ::ng-deep .mermaid .node:hover polygon,
+:host ::ng-deep .mermaid .node:hover rect {
+  filter: brightness(1.2);
+  stroke: var(--mat-sys-primary) !important;
+  stroke-width: 3px !important;
+}
+
+:host ::ng-deep .mermaid .node:hover span {
+  color: var(--mat-sys-on-surface) !important;
+}
+
+// ── Status classes ─────────────────────────────────────────────────
+
+:host ::ng-deep .mermaid .node.current .basic,
+:host ::ng-deep .mermaid .node.current .label-container,
+:host ::ng-deep .mermaid .node.current polygon,
+:host ::ng-deep .mermaid .node.current rect,
+:host ::ng-deep .mermaid .node.running .basic,
+:host ::ng-deep .mermaid .node.running .label-container,
+:host ::ng-deep .mermaid .node.running polygon,
+:host ::ng-deep .mermaid .node.running rect {
+  fill: var(--app-color-pass-bg) !important;
+  stroke: var(--app-color-pass) !important;
+  stroke-width: 3px !important;
+}
+
+:host ::ng-deep .mermaid .node.done .basic,
+:host ::ng-deep .mermaid .node.done .label-container,
+:host ::ng-deep .mermaid .node.done polygon,
+:host ::ng-deep .mermaid .node.done rect {
+  fill: rgba(255, 255, 255, 0.06) !important;
+  stroke: var(--app-color-pass) !important;
+}
+
+:host ::ng-deep .mermaid .node.failed .basic,
+:host ::ng-deep .mermaid .node.failed .label-container,
+:host ::ng-deep .mermaid .node.failed polygon,
+:host ::ng-deep .mermaid .node.failed rect {
+  fill: var(--app-color-fail-bg) !important;
+  stroke: var(--app-color-fail) !important;
+}
+
+:host ::ng-deep .mermaid .node.skipped .basic,
+:host ::ng-deep .mermaid .node.skipped .label-container,
+:host ::ng-deep .mermaid .node.skipped polygon,
+:host ::ng-deep .mermaid .node.skipped rect {
+  fill: var(--app-color-warn-bg) !important;
+  stroke: var(--app-color-warn) !important;
+}
+
+:host ::ng-deep .mermaid .node.current span,
+:host ::ng-deep .mermaid .node.running span,
+:host ::ng-deep .mermaid .node.done span,
+:host ::ng-deep .mermaid .node.failed span,
+:host ::ng-deep .mermaid .node.skipped span {
+  color: var(--mat-sys-on-surface) !important;
+}
+
+:host ::ng-deep .mermaid .node.selected .basic,
+:host ::ng-deep .mermaid .node.selected .label-container,
+:host ::ng-deep .mermaid .node.selected polygon,
+:host ::ng-deep .mermaid .node.selected rect {
+  filter: drop-shadow(0 0 0.35rem var(--mat-sys-primary));
+  stroke-width: 3px !important;
+}
