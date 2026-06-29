@@ -19,12 +19,24 @@
   @if (showInspector()) {
     <aside class="task-graph__inspector">
       @if (selectedNode(); as node) {
-        <div class="task-graph__node-heading" [attr.data-status]="node.status">
-          <span class="task-graph__status-dot"></span>
-          <div>
-            <h4>{{ node.title }}</h4>
-            <p>{{ node.id }} - {{ node.status }}</p>
+        <div class="task-graph__node-heading" [attr.data-status]="node.status" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+            <span class="task-graph__status-dot"></span>
+            <div>
+              <h4>{{ node.title }}</h4>
+              <p>{{ node.id }} - {{ node.status }}</p>
+            </div>
           </div>
+          <button
+            type="button"
+            class="task-graph__copy-agent"
+            (click)="copyNodeForAgent(node)"
+            [matTooltip]="copiedNodeId() === node.id ? 'Copied!' : 'Copy node details for Agent'"
+            style="display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; color: rgba(255, 255, 255, 0.8); cursor: pointer; font-size: 11px; height: 26px;"
+          >
+            <mat-icon style="font-size: 14px; width: 14px; height: 14px; line-height: 14px;">content_copy</mat-icon>
+            <span>{{ copiedNodeId() === node.id ? 'Copied!' : 'Copy for Agent' }}</span>
+          </button>
         </div>
 
         <dl class="task-graph__node-meta">

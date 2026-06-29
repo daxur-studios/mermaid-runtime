@@ -18,6 +18,8 @@ import { MarkdownModule, MermaidAPI } from 'ngx-markdown';
 import { DaxurDaemonAPI } from '@daxur-daemon-api/daxur-daemon-api';
 import { LocalDaemonService } from '@app/core/services/daemon/local-daemon.service';
 import { GraphCameraComponent } from '../graph-camera/graph-camera.component';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 /**
  * Per-node visual override supplied by the host.
@@ -170,7 +172,7 @@ const DEFAULT_MERMAID_OPTIONS: MermaidAPI.MermaidConfig = {
   templateUrl: './task-graph.component.html',
   styleUrl: './task-graph.component.scss',
   host: { class: 'app-task-graph' },
-  imports: [CommonModule, MarkdownModule, GraphCameraComponent],
+  imports: [CommonModule, MarkdownModule, GraphCameraComponent, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TaskGraphComponent {
@@ -218,6 +220,40 @@ export class TaskGraphComponent {
   private readonly internalSelectedNodeId = signal<string | null>(null);
 
   private readonly aliasMap = computed<TaskGraphAliasMap>(() => this.buildAliasMap(this.nodes()));
+
+  protected readonly copiedNodeId = signal<string | null>(null);
+
+  protected copyNodeForAgent(node: DaxurDaemonAPI.TaskRunNode): void {
+    const lines: string[] = [];
+    const runId = this.runId();
+    if (runId) {
+      lines.push(`Run ID: ${runId}`);
+    }
+    lines.push(`Node: ${node.title} (${node.id})`);
+    lines.push(`Status: ${node.status}`);
+    if (node.progressPercent != null || node.progressLabel) {
+      const pct = node.progressPercent != null ? `${node.progressPercent}%` : '';
+      const label = node.progressLabel || '';
+      lines.push(`Progress: ${label}${pct ? ` (${pct})` : ''}`);
+    }
+    if (node.detail) {
+      lines.push(`Detail: ${node.detail}`);
+    }
+    if (node.error) {
+      lines.push(`Error: ${node.error}`);
+    }
+    const text = lines.join('\n');
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.copiedNodeId.set(node.id);
+        setTimeout(() => {
+          if (this.copiedNodeId() === node.id) {
+            this.copiedNodeId.set(null);
+          }
+        }, 2000);
+      });
+    }
+  }
 
   protected readonly flowMarkdown = computed(() => `\`\`\`mermaid\n${this.buildGraph()}\n\`\`\``);
 
