@@ -71,6 +71,33 @@ interface SelectedTaskGraphRef {
 const NODE_HREF_PARAM = 'node';
 
 /**
+ * Maps an execution status to the CSS class applied to its live `.node` element.
+ *
+ * PURPOSE: Keep execution-state styling out of the Mermaid source.
+ *
+ * VALUE: Status changes update the rendered DOM in place, so Mermaid does not
+ * tear down and rebuild the SVG for every running/done/failed transition.
+ */
+const STATUS_CLASS_BY_STATUS: Partial<
+  Record<DaxurDaemonAPI.TaskRunNodeStatus, string>
+> = {
+  complete: 'done',
+  failed: 'failed',
+  skipped: 'skipped',
+  running: 'running',
+};
+
+/**
+ * Status/current classes removed before each status re-application.
+ *
+ * PURPOSE: Make status styling idempotent after every graph update.
+ *
+ * VALUE: Stale visual state never sticks to a node after its execution status
+ * changes.
+ */
+const ALL_STATUS_CLASSES = ['done', 'failed', 'skipped', 'running', 'current'] as const;
+
+/**
  * Zoom cap when follow-execution frames the running nodes.
  *
  * Value: Keeps the camera from snapping uncomfortably close to one or two
@@ -86,6 +113,25 @@ const FOLLOW_MAX_ZOOM = 1.4;
  * without hiding a bare formatting number.
  */
 const TASK_RUN_REF_JSON_INDENT_SPACES = 2;
+
+/**
+ * Lowest valid percentage shown in a task graph node progress bar.
+ *
+ * PURPOSE: Clamp malformed task-run node progress before it reaches Mermaid.
+ *
+ * VALUE: Progress bars never render negative values.
+ */
+const TASK_GRAPH_PROGRESS_MIN_PERCENT = 0;
+
+/**
+ * Highest valid percentage shown in a task graph node progress bar.
+ *
+ * PURPOSE: Keep task-run node progress inside the browser progress element's
+ * expected range.
+ *
+ * VALUE: Node labels and inspector bars share the same 0-100 scale.
+ */
+const TASK_GRAPH_PROGRESS_MAX_PERCENT = 100;
 
 /**
  * Default Mermaid render configuration for the task graph.
@@ -219,6 +265,20 @@ export class TaskGraphComponent {
       .join(','),
   );
 
+  /** Joined `id:status` pairs — drives live status-class application (no re-render). */
+  private readonly statusKey = computed(() =>
+    this.nodes()
+      .map((node) => `${node.id}:${node.status}`)
+      .join(','),
+  );
+
+  /** Joined node progress values — drives live progress-bar DOM updates. */
+  private readonly progressKey = computed(() =>
+    this.nodes()
+      .map((node) => `${node.id}:${node.progressPercent ?? ''}:${node.progressLabel ?? ''}`)
+      .join(','),
+  );
+
   /** Follow temporarily suspended after a manual pan/zoom. */
   protected readonly followPaused = signal(false);
 
@@ -233,14 +293,11 @@ export class TaskGraphComponent {
   /** True once the first Mermaid node has rendered, so we fit the view once. */
   private hasFitInitialView = false;
 
-  /** Set when the running set changes; cleared once the camera has re-framed. */
-  private followFrameRequested = false;
-
-  /** Pending rAF handle for a follow re-frame, so we coalesce rapid changes. */
-  private followFrameHandle: number | null = null;
-
   /** Last seen `followExecution` value, to detect off→on (which resumes follow). */
   private lastFollowOn = false;
+
+  /** A follow re-frame is already queued for the next frame (coalesces bursts). */
+  private followFramePending = false;
 
   constructor() {
     const host = this.hostElement.nativeElement;
@@ -251,19 +308,33 @@ export class TaskGraphComponent {
     this.destroyRef.onDestroy(() => {
       host.removeEventListener('click', clickListener, true);
       chartObserver.disconnect();
-      if (this.followFrameHandle !== null) cancelAnimationFrame(this.followFrameHandle);
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
 
-    // Re-frame whenever follow toggles, the pause clears, or the running set
-    // changes. All signal writes/measurements happen later in the rAF callback,
-    // outside this reactive context.
+    // Status colouring and the "current" highlight live as DOM classes on the
+    // rendered nodes, applied whenever a status or the current focus changes.
+    // Because this never touches the Mermaid source, the SVG is not re-rendered.
+    effect(() => {
+      this.statusKey();
+      this.currentNodeId();
+      this.scheduleStatusClasses();
+    });
+
+    effect(() => {
+      this.progressKey();
+      this.scheduleNodeProgressBars();
+    });
+
+    // Re-frame the camera whenever an execution event changes the active node or
+    // follow is toggled. The graph layout never changes between status updates,
+    // so we only need to re-measure when one of these actually fires.
     effect(() => {
       this.followExecution();
       this.followPaused();
+      this.currentNodeId();
       this.runningKey();
-      this.requestFollowFrame();
+      this.scheduleFollow();
     });
   }
 
@@ -278,17 +349,20 @@ export class TaskGraphComponent {
     return { toAlias, toReal };
   }
 
+  /**
+   * Build the Mermaid source for the graph **structure only** (nodes, edges,
+   * shapes, click targets) — never status or current-focus.
+   *
+   * Status colouring and the live "current" highlight are applied as DOM classes
+   * on the rendered `.node` elements (see `applyStatusClasses`). Keeping them out
+   * of the source means `flowMarkdown` only changes when the structure changes,
+   * so a run that merely advances statuses produces zero Mermaid re-renders.
+   */
   private buildGraph(): string {
     const nodes = this.nodes();
     const { toAlias } = this.aliasMap();
     const decorations = this.decorations();
     const aliasFor = (id: string): string | undefined => toAlias.get(id);
-
-    const statusAliases = (status: DaxurDaemonAPI.TaskRunNodeStatus): string[] =>
-      nodes.filter((node) => node.status === status).map((node) => toAlias.get(node.id) ?? '');
-
-    const currentId = this.currentNodeId();
-    const currentAlias = currentId ? aliasFor(currentId) : undefined;
 
     return [
       'flowchart TD',
@@ -299,11 +373,6 @@ export class TaskGraphComponent {
       ...nodes.map((node) => this.buildNodeClickLine(node, toAlias.get(node.id) ?? node.id)),
       '',
       `  class ${nodes.map((node) => toAlias.get(node.id)).join(',')} clickable;`,
-      this.buildStatusClassLine(statusAliases('complete'), 'done'),
-      this.buildStatusClassLine(statusAliases('failed'), 'failed'),
-      this.buildStatusClassLine(statusAliases('skipped'), 'skipped'),
-      this.buildStatusClassLine(statusAliases('running'), 'running'),
-      currentAlias ? `  class ${currentAlias} current;` : '',
     ]
       .filter(Boolean)
       .join('\n');
@@ -314,8 +383,39 @@ export class TaskGraphComponent {
     alias: string,
     decoration: TaskGraphNodeDecoration | undefined,
   ): string {
-    const title = this.escapeMermaidString(decoration?.displayTitle ?? node.title);
+    const title = this.buildNodeLabel(decoration?.displayTitle ?? node.title);
     return decoration?.shape === 'diamond' ? `  ${alias}{"${title}"}` : `  ${alias}["${title}"]`;
+  }
+
+  /**
+   * Builds the Mermaid node label.
+   *
+   * PURPOSE: Keep Mermaid source limited to plain node text.
+   *
+   * VALUE: Live progress markup is injected after render, so Mermaid cannot
+   * parse-fail on HTML controls or changing percentage values.
+   */
+  private buildNodeLabel(title: string): string {
+    return this.escapeMermaidString(title);
+  }
+
+  /**
+   * Reads a safe whole-number progress value from a task-run node.
+   *
+   * PURPOSE: Avoid pushing null, NaN, or out-of-range progress into Mermaid HTML
+   * labels.
+   *
+   * VALUE: The generated `<progress>` element always receives valid numeric
+   * attributes.
+   */
+  private readNodeProgressPercent(progressPercent: number | null | undefined): number | null {
+    if (progressPercent === null || progressPercent === undefined || !Number.isFinite(progressPercent)) {
+      return null;
+    }
+    return Math.max(
+      TASK_GRAPH_PROGRESS_MIN_PERCENT,
+      Math.min(TASK_GRAPH_PROGRESS_MAX_PERCENT, Math.round(progressPercent)),
+    );
   }
 
   private buildEdgeLines(aliasFor: (id: string) => string | undefined): string[] {
@@ -353,11 +453,6 @@ export class TaskGraphComponent {
     return `  click ${alias} "?${NODE_HREF_PARAM}=${encodeURIComponent(node.id)}" "${tooltip}"`;
   }
 
-  private buildStatusClassLine(aliases: string[], className: string): string {
-    const present = aliases.filter(Boolean);
-    return present.length > 0 ? `  class ${present.join(',')} ${className};` : '';
-  }
-
   private escapeMermaidString(value: string): string {
     return value.replace(/"/g, '\\"');
   }
@@ -365,18 +460,16 @@ export class TaskGraphComponent {
   private onChartMutation(): void {
     this.applySelectedNodeClass(this.effectiveSelectedNodeId());
     if (!this.hostElement.nativeElement.querySelector('.mermaid .node')) return;
+    // A structural re-render produces fresh, class-less nodes; re-apply status.
+    this.applyStatusClasses();
+    this.applyNodeProgressBars();
 
-    // A re-render after a status change is the moment the new running nodes
-    // exist in the DOM, so honour any pending follow re-frame here first.
-    if (this.followActive() && this.followFrameRequested) {
+    if (this.followActive()) {
+      // First render (or a re-render) with follow on: frame the active node.
+      this.requestFrameActiveNode();
+    } else if (!this.hasFitInitialView) {
       this.hasFitInitialView = true;
-      this.tryFollowFrame();
-      return;
-    }
-
-    if (!this.hasFitInitialView) {
-      this.hasFitInitialView = true;
-      requestAnimationFrame(() => (this.followActive() ? this.tryFollowFrame() : this.cameraRef().fitAll()));
+      requestAnimationFrame(() => this.cameraRef().fitAll());
     }
   }
 
@@ -385,57 +478,67 @@ export class TaskGraphComponent {
     if (this.followExecution()) this.followPaused.set(true);
   }
 
-  /** Re-center chip handler: resume follow and immediately re-frame. */
+  /** Re-center chip handler: resume follow and move to the active node. */
   protected resumeFollow(): void {
     this.followPaused.set(false);
-    this.requestFollowFrame();
+    this.scheduleFollow();
   }
 
-  /** Coalesce follow re-frames into a single rAF, so rapid changes batch. */
-  private requestFollowFrame(): void {
-    this.followFrameRequested = true;
-    if (this.followFrameHandle !== null) cancelAnimationFrame(this.followFrameHandle);
-    this.followFrameHandle = requestAnimationFrame(() => {
-      this.followFrameHandle = null;
-      this.tryFollowFrame();
+  /**
+   * Re-frame on the active node when follow is live. Resumes follow if the host
+   * just toggled `followExecution` back on.
+   */
+  private scheduleFollow(): void {
+    if (this.followExecution() && !this.lastFollowOn) this.followPaused.set(false);
+    this.lastFollowOn = this.followExecution();
+    if (this.followActive()) this.requestFrameActiveNode();
+  }
+
+  /**
+   * Queue a follow re-frame for the next animation frame.
+   *
+   * A status change fires both the follow effect and a burst of Mermaid DOM
+   * mutations; coalescing them to a single frame stops the camera re-animating
+   * many times for one execution event.
+   */
+  private requestFrameActiveNode(): void {
+    if (this.followFramePending) return;
+    this.followFramePending = true;
+    requestAnimationFrame(() => {
+      this.followFramePending = false;
+      this.frameActiveNode();
     });
   }
 
   /**
-   * Frame the running nodes (plus their direct neighbours for context) if follow
-   * is active. Re-enabling follow (off→on) also clears any earlier pause.
+   * Move the camera to the active node (plus its 1-hop neighbours, so the
+   * previous/upcoming nodes stay visible). Measures the live render: the layout
+   * is stable, so even a node from the outgoing SVG yields the right position.
    */
-  private tryFollowFrame(): void {
-    // Peeked outside a reactive consumer — no dependency is registered here.
-    if (this.followExecution() && !this.lastFollowOn) this.followPaused.set(false);
-    this.lastFollowOn = this.followExecution();
+  private frameActiveNode(): void {
+    if (!this.followActive()) return;
+    const focusId = this.activeFocusId();
+    if (!focusId) return;
 
-    if (!this.followActive() || !this.followFrameRequested) return;
-    const elements = this.collectFollowElements();
-    if (elements.length === 0) return;
-    this.followFrameRequested = false;
-    this.cameraRef().frameElements(elements, { maxScale: FOLLOW_MAX_ZOOM });
-  }
-
-  /** Running node elements plus their 1-hop neighbours, for follow framing. */
-  private collectFollowElements(): Element[] {
-    const runningIds = this.nodes()
-      .filter((node) => node.status === 'running')
-      .map((node) => node.id);
-    if (runningIds.length === 0) return [];
-
-    const focusIds = new Set(runningIds);
-    const neighbours = this.buildNeighbourMap();
-    for (const id of runningIds) {
-      for (const neighbour of neighbours.get(id) ?? []) focusIds.add(neighbour);
-    }
+    const ids = new Set<string>([focusId]);
+    for (const neighbour of this.buildNeighbourMap().get(focusId) ?? []) ids.add(neighbour);
 
     const elements: Element[] = [];
-    for (const id of focusIds) {
+    for (const id of ids) {
       const element = this.findNodeElement(id);
       if (element) elements.push(element);
     }
-    return elements;
+    if (elements.length === 0) return;
+    this.cameraRef().frameElements(elements, { maxScale: FOLLOW_MAX_ZOOM });
+  }
+
+  /** The node the camera should follow: the live focus, else a running node. */
+  private activeFocusId(): string | null {
+    return (
+      this.currentNodeId() ??
+      this.nodes().find((node) => node.status === 'running')?.id ??
+      null
+    );
   }
 
   /** Undirected 1-hop adjacency built from the resolved edges. */
@@ -495,6 +598,88 @@ export class TaskGraphComponent {
 
   private scheduleSelectedNodeClass(selectedId: string | null): void {
     requestAnimationFrame(() => this.applySelectedNodeClass(selectedId));
+  }
+
+  /** Defer status-class application to the next frame, after any pending render. */
+  private scheduleStatusClasses(): void {
+    requestAnimationFrame(() => this.applyStatusClasses());
+  }
+
+  /** Defer progress-bar application to the next frame, after any pending render. */
+  private scheduleNodeProgressBars(): void {
+    requestAnimationFrame(() => this.applyNodeProgressBars());
+  }
+
+  /**
+   * Apply each node's status colour and the live "current" highlight directly to
+   * its rendered `.node` element, replacing the previous classes.
+   *
+   * PURPOSE: Reflect execution progress without regenerating the Mermaid source.
+   *
+   * VALUE: The SVG stays put across status updates — no teardown/rebuild — so the
+   * camera measures a stable layout and node label sizing never jumps.
+   */
+  private applyStatusClasses(): void {
+    const currentId = this.currentNodeId();
+    for (const node of this.nodes()) {
+      const element = this.findNodeElement(node.id);
+      if (!element) continue;
+      element.classList.remove(...ALL_STATUS_CLASSES);
+      const statusClass = STATUS_CLASS_BY_STATUS[node.status];
+      if (statusClass) element.classList.add(statusClass);
+      if (node.id === currentId) element.classList.add('current');
+    }
+  }
+
+  /**
+   * Apply each node's progress directly to the rendered Mermaid label.
+   *
+   * PURPOSE: Show live 0-100% node progress without changing the Mermaid source.
+   *
+   * VALUE: Progress ticks update the bar in place, keeping the camera and
+   * selected node stable while long-running work advances.
+   */
+  private applyNodeProgressBars(): void {
+    for (const node of this.nodes()) {
+      const element = this.findNodeElement(node.id);
+      const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
+      if (!element || !label) continue;
+
+      let progressWrap = element.querySelector('.task-graph-node-progress-wrap');
+      if (!progressWrap) {
+        progressWrap = document.createElement('div');
+        progressWrap.classList.add('task-graph-node-progress-wrap');
+
+        const progressElement = document.createElement('progress');
+        progressElement.classList.add('task-graph-node-progress');
+        progressElement.value = TASK_GRAPH_PROGRESS_MIN_PERCENT;
+        progressElement.max = TASK_GRAPH_PROGRESS_MAX_PERCENT;
+
+        const progressText = document.createElement('small');
+        progressWrap.append(progressElement, progressText);
+        label.append(progressWrap);
+      }
+
+      const progressPercent = this.readNodeProgressPercent(node.progressPercent);
+      progressWrap.classList.toggle('has-progress', progressPercent !== null);
+
+      const progressElement = progressWrap.querySelector('progress');
+      if (progressElement instanceof HTMLProgressElement) {
+        progressElement.value = progressPercent ?? TASK_GRAPH_PROGRESS_MIN_PERCENT;
+        progressElement.max = TASK_GRAPH_PROGRESS_MAX_PERCENT;
+      }
+
+      const progressText = progressWrap.querySelector('small');
+      // Only write when the text actually changes. Writing a non-empty
+      // `textContent` replaces the child text node, which is a childList
+      // mutation inside the subtree the host MutationObserver watches — an
+      // unconditional write would re-trigger `onChartMutation` → this method in
+      // an unbounded loop that freezes the page.
+      if (progressText) {
+        const nextText = progressPercent === null ? '' : `${progressPercent}%`;
+        if (progressText.textContent !== nextText) progressText.textContent = nextText;
+      }
+    }
   }
 
   private applySelectedNodeClass(selectedId: string | null): void {

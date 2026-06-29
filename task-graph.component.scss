@@ -387,6 +387,57 @@
   color: var(--mat-sys-on-surface) !important;
 }
 
+:host ::ng-deep .mermaid foreignObject {
+  overflow: visible;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 7rem;
+  gap: 0.18rem;
+  margin-top: 0.28rem;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress-wrap small {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.68rem;
+  line-height: 1;
+  min-height: 0.68rem;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress {
+  width: 100%;
+  height: 0.38rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  accent-color: var(--app-color-pass);
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress-wrap.has-progress {
+  opacity: 1;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--app-color-pass);
+}
+
+:host ::ng-deep .mermaid .task-graph-node-progress::-moz-progress-bar {
+  border-radius: inherit;
+  background: var(--app-color-pass);
+}
+
 // ── Status classes ─────────────────────────────────────────────────
 
 :host ::ng-deep .mermaid .node.current .basic,
