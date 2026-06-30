@@ -15,7 +15,7 @@ import { CommonModule } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MarkdownModule, MermaidAPI } from 'ngx-markdown';
 
-import { DaxurDaemonAPI } from '@daxur-daemon-api/daxur-daemon-api';
+import { TaskGraphModel } from './task-graph-model';
 import { LocalDaemonService } from '@app/core/services/daemon/local-daemon.service';
 import { GraphCameraComponent } from '../graph-camera/graph-camera.component';
 import { MatIconModule } from '@angular/material/icon';
@@ -24,13 +24,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 /**
  * Per-node visual override supplied by the host.
  *
- * Value: Lets a caller relabel a node or render it as a decision diamond
- * without polluting the execution model (`TaskRunNode`) with view concerns.
+ * Value: Re-exported from the viewer's self-owned model so existing consumers
+ * keep importing `TaskGraphNodeDecoration` from this component while the canonical
+ * definition lives in `TaskGraphModel` (the extractable library surface).
  */
-export interface TaskGraphNodeDecoration {
-  displayTitle?: string;
-  shape?: 'rect' | 'diamond';
-}
+export type TaskGraphNodeDecoration = TaskGraphModel.NodeDecoration;
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface TaskGraphEdge {
@@ -53,8 +51,8 @@ interface TaskGraphAliasMap {
  */
 interface TaskGraphRefGroup {
   title: string;
-  kind: DaxurDaemonAPI.TaskRunInspectableRefKind;
-  refs: DaxurDaemonAPI.TaskRunInspectableRef[];
+  kind: TaskGraphModel.InspectableRefKind;
+  refs: TaskGraphModel.InspectableRef[];
 }
 
 /**
@@ -65,8 +63,8 @@ interface TaskGraphRefGroup {
  */
 interface SelectedTaskGraphRef {
   nodeId: string;
-  refKind: DaxurDaemonAPI.TaskRunInspectableRefKind;
-  ref: DaxurDaemonAPI.TaskRunInspectableRef;
+  refKind: TaskGraphModel.InspectableRefKind;
+  ref: TaskGraphModel.InspectableRef;
 }
 
 /** Query parameter used to encode the real node id in Mermaid click hrefs. */
@@ -81,7 +79,7 @@ const NODE_HREF_PARAM = 'node';
  * tear down and rebuild the SVG for every running/done/failed transition.
  */
 const STATUS_CLASS_BY_STATUS: Partial<
-  Record<DaxurDaemonAPI.TaskRunNodeStatus, string>
+  Record<TaskGraphModel.NodeStatus, string>
 > = {
   complete: 'done',
   failed: 'failed',
@@ -182,13 +180,13 @@ export class TaskGraphComponent {
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
 
   /** Execution nodes to render. The host owns their lifecycle and status. */
-  readonly nodes = input.required<DaxurDaemonAPI.TaskRunNode[]>();
+  readonly nodes = input.required<TaskGraphModel.Node[]>();
 
   /**
    * Runtime/story edges. When omitted, edges fall back to per-node
    * `transitions`, then to `dependencies` so a dependency-only graph still draws.
    */
-  readonly transitions = input<DaxurDaemonAPI.TaskRunTransition[] | null>(null);
+  readonly transitions = input<TaskGraphModel.Transition[] | null>(null);
 
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
@@ -223,7 +221,7 @@ export class TaskGraphComponent {
 
   protected readonly copiedNodeId = signal<string | null>(null);
 
-  protected copyNodeForAgent(node: DaxurDaemonAPI.TaskRunNode): void {
+  protected copyNodeForAgent(node: TaskGraphModel.Node): void {
     const lines: string[] = [];
     const runId = this.runId();
     if (runId) {
@@ -282,7 +280,7 @@ export class TaskGraphComponent {
 
   protected readonly selectedRef = signal<SelectedTaskGraphRef | null>(null);
 
-  protected readonly selectedRefContent = signal<DaxurDaemonAPI.TaskRunRefContent | null>(null);
+  protected readonly selectedRefContent = signal<TaskGraphModel.RefContent | null>(null);
 
   protected readonly selectedRefLoading = signal(false);
 
@@ -374,7 +372,7 @@ export class TaskGraphComponent {
     });
   }
 
-  private buildAliasMap(nodes: readonly DaxurDaemonAPI.TaskRunNode[]): TaskGraphAliasMap {
+  private buildAliasMap(nodes: readonly TaskGraphModel.Node[]): TaskGraphAliasMap {
     const toAlias = new Map<string, string>();
     const toReal = new Map<string, string>();
     nodes.forEach((node, index) => {
@@ -415,7 +413,7 @@ export class TaskGraphComponent {
   }
 
   private buildNodeDefinitionLine(
-    node: DaxurDaemonAPI.TaskRunNode,
+    node: TaskGraphModel.Node,
     alias: string,
     decoration: TaskGraphNodeDecoration | undefined,
   ): string {
@@ -484,7 +482,7 @@ export class TaskGraphComponent {
     );
   }
 
-  private buildNodeClickLine(node: DaxurDaemonAPI.TaskRunNode, alias: string): string {
+  private buildNodeClickLine(node: TaskGraphModel.Node, alias: string): string {
     const tooltip = this.escapeMermaidString(`View ${node.title}`);
     return `  click ${alias} "?${NODE_HREF_PARAM}=${encodeURIComponent(node.id)}" "${tooltip}"`;
   }
@@ -741,7 +739,7 @@ export class TaskGraphComponent {
    * VALUE: Any task that publishes refs gets clickable inputs, outputs, context,
    * logs, and artifacts without a task-specific component.
    */
-  private buildRefGroups(node: DaxurDaemonAPI.TaskRunNode): TaskGraphRefGroup[] {
+  private buildRefGroups(node: TaskGraphModel.Node): TaskGraphRefGroup[] {
     const groups: TaskGraphRefGroup[] = [
       { title: 'Inputs', kind: 'input', refs: node.inputRefs ?? [] },
       { title: 'Outputs', kind: 'output', refs: node.outputRefs ?? [] },
@@ -763,8 +761,8 @@ export class TaskGraphComponent {
    */
   protected openNodeRef(
     nodeId: string,
-    refKind: DaxurDaemonAPI.TaskRunInspectableRefKind,
-    ref: DaxurDaemonAPI.TaskRunInspectableRef,
+    refKind: TaskGraphModel.InspectableRefKind,
+    ref: TaskGraphModel.InspectableRef,
   ): void {
     const runId = this.runId();
     this.selectedRef.set({ nodeId, refKind, ref });
@@ -804,7 +802,7 @@ export class TaskGraphComponent {
    */
   protected isSelectedRef(
     nodeId: string,
-    refKind: DaxurDaemonAPI.TaskRunInspectableRefKind,
+    refKind: TaskGraphModel.InspectableRefKind,
     refId: string,
   ): boolean {
     const selected = this.selectedRef();
@@ -818,7 +816,7 @@ export class TaskGraphComponent {
    *
    * VALUE: The template stays readable while preserving each ref's original shape.
    */
-  protected readRefLabel(ref: DaxurDaemonAPI.TaskRunInspectableRef): string {
+  protected readRefLabel(ref: TaskGraphModel.InspectableRef): string {
     return 'label' in ref && ref.label ? ref.label : ref.id;
   }
 
@@ -829,7 +827,7 @@ export class TaskGraphComponent {
    *
    * VALUE: Ref rows remain useful even when a task only publishes a file pointer.
    */
-  protected readRefSummary(ref: DaxurDaemonAPI.TaskRunInspectableRef): string {
+  protected readRefSummary(ref: TaskGraphModel.InspectableRef): string {
     const pathValue = this.readRefPath(ref);
     return ref.summary || pathValue || ('eventId' in ref && ref.eventId ? ref.eventId : '');
   }
@@ -841,7 +839,7 @@ export class TaskGraphComponent {
    *
    * VALUE: Event-only refs can render without showing an empty path row.
    */
-  protected readRefPath(ref: DaxurDaemonAPI.TaskRunInspectableRef): string | null {
+  protected readRefPath(ref: TaskGraphModel.InspectableRef): string | null {
     return 'path' in ref && typeof ref.path === 'string' && ref.path.trim().length > 0 ? ref.path : null;
   }
 
@@ -852,7 +850,7 @@ export class TaskGraphComponent {
    *
    * VALUE: Structured node context is easier to inspect without changing how refs are stored.
    */
-  private formatTaskRunRefContent(content: DaxurDaemonAPI.TaskRunRefContent): string {
+  private formatTaskRunRefContent(content: TaskGraphModel.RefContent): string {
     if (content.contentType !== 'application/json') {
       return content.content;
     }
