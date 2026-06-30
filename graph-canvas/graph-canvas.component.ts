@@ -133,6 +133,31 @@ const TASK_GRAPH_PROGRESS_MIN_PERCENT = 0;
 const TASK_GRAPH_PROGRESS_MAX_PERCENT = 100;
 
 /**
+ * Most subgraph child nodes drawn in a node's inline mini-preview.
+ *
+ * PURPOSE: Keep the decorative thumbnail small and cheap regardless of how large
+ * a child graph is.
+ *
+ * VALUE: Bounds the rendered SVG; any overflow is summarised as a "+N" marker.
+ */
+const SUBGRAPH_PREVIEW_MAX_NODES = 10;
+
+/** Dot radius (px) for a node in the inline subgraph mini-preview. */
+const SUBGRAPH_PREVIEW_DOT_RADIUS_PX = 2.4;
+
+/** Horizontal gap (px) between dependency columns in the subgraph mini-preview. */
+const SUBGRAPH_PREVIEW_COLUMN_GAP_PX = 13;
+
+/** Vertical gap (px) between sibling rows in a subgraph mini-preview column. */
+const SUBGRAPH_PREVIEW_ROW_GAP_PX = 9;
+
+/** Outer padding (px) around the subgraph mini-preview drawing. */
+const SUBGRAPH_PREVIEW_PADDING_PX = 5;
+
+/** Extra width (px) reserved for the "+N" overflow marker in the mini-preview. */
+const SUBGRAPH_PREVIEW_OVERFLOW_LABEL_WIDTH_PX = 16;
+
+/**
  * Default Mermaid render configuration for the task graph.
  *
  * Value: Dark theme to match the app, `loose` security so click hrefs render
@@ -209,6 +234,14 @@ export class GraphCanvasComponent {
 
   /** Whether to render the breadcrumb overlay while inside a subgraph. */
   readonly showBreadcrumb = input<boolean>(true);
+
+  /**
+   * Whether drillable nodes show a small, static thumbnail of their child graph.
+   *
+   * VALUE: A purely decorative hint that a node contains a subgraph (and its
+   * rough shape); set false to drop it entirely with no other behaviour change.
+   */
+  readonly showSubgraphPreview = input<boolean>(true);
 
   /**
    * Whether a host has projected `[detail]` chrome — toggles the side column.
@@ -424,6 +457,15 @@ export class GraphCanvasComponent {
       this.scheduleNodeProgressBars();
     });
 
+    // Re-apply the inline subgraph thumbnails when the toggle flips or the active
+    // level changes. A structural re-render already re-applies them via
+    // `onChartMutation`; this covers the false→true toggle (no re-render fires).
+    effect(() => {
+      this.showSubgraphPreview();
+      this.graphStack();
+      this.scheduleSubgraphPreviews();
+    });
+
     // Re-frame the camera whenever an execution event changes the active node or
     // follow is toggled. The graph layout never changes between status updates,
     // so we only need to re-measure when one of these actually fires.
@@ -567,6 +609,7 @@ export class GraphCanvasComponent {
     if (!this.hostElement.nativeElement.querySelector('.mermaid .node')) return;
     // A structural re-render produces fresh, class-less nodes; re-apply status.
     this.applyStatusClasses();
+    this.applySubgraphPreviews();
     this.applyNodeProgressBars();
 
     if (this.followActive() && this.activeFocusId()) {
@@ -732,6 +775,11 @@ export class GraphCanvasComponent {
     requestAnimationFrame(() => this.applyNodeProgressBars());
   }
 
+  /** Defer subgraph-preview application to the next frame, after any pending render. */
+  private scheduleSubgraphPreviews(): void {
+    requestAnimationFrame(() => this.applySubgraphPreviews());
+  }
+
   /**
    * Apply each node's status colour and the live "current" highlight directly to
    * its rendered `.node` element, replacing the previous classes.
@@ -819,6 +867,191 @@ export class GraphCanvasComponent {
     );
     const selectedNode = selectedLink?.querySelector('.node') ?? selectedLink?.closest('.node');
     selectedNode?.classList.add('selected');
+  }
+
+  // ── Subgraph inline preview ────────────────────────────────────────
+
+  /**
+   * Inject (or refresh) a static thumbnail of each drillable node's child graph
+   * into the node label.
+   *
+   * PURPOSE: Hint a node's subgraph and its rough shape inline, without the host
+   * decorating anything.
+   *
+   * VALUE: Decoration only — it is `pointer-events: none`, cached by structure
+   * hash so status/progress ticks never rebuild it, and re-injected idempotently
+   * after a structural Mermaid re-render. Never participates in selection,
+   * follow, or progress, so it cannot trigger a MutationObserver re-render storm.
+   */
+  private applySubgraphPreviews(): void {
+    if (!this.showSubgraphPreview()) {
+      this.removeSubgraphPreviews();
+      return;
+    }
+    for (const node of this.activeNodes()) {
+      const element = this.findNodeElement(node.id);
+      const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
+      if (!element || !label) continue;
+
+      const existing = label.querySelector('.task-graph-node-subgraph-preview');
+      const graph = this.resolveSubgraph(node);
+      if (!graph) {
+        existing?.remove();
+        continue;
+      }
+
+      const { html, hash } = this.buildSubgraphPreview(graph);
+      if (existing instanceof HTMLElement) {
+        // Skip the DOM write when the structure is unchanged — an unconditional
+        // write would be a childList mutation that re-triggers `onChartMutation`.
+        if (existing.dataset['sgHash'] === hash) continue;
+        existing.innerHTML = html;
+        existing.dataset['sgHash'] = hash;
+      } else {
+        const wrap = document.createElement('div');
+        wrap.classList.add('task-graph-node-subgraph-preview');
+        wrap.dataset['sgHash'] = hash;
+        wrap.innerHTML = html;
+        label.append(wrap);
+      }
+    }
+  }
+
+  /** Strip every injected subgraph thumbnail (toggle off). */
+  private removeSubgraphPreviews(): void {
+    for (const preview of this.hostElement.nativeElement.querySelectorAll(
+      '.task-graph-node-subgraph-preview',
+    )) {
+      preview.remove();
+    }
+  }
+
+  /**
+   * Build the static mini-preview SVG for a child graph plus a structure hash.
+   *
+   * PURPOSE: Lay the child graph out as a tiny dependency-layered dot diagram
+   * (columns = depth, terminal nodes accented) that reads as "this node contains
+   * a few steps".
+   *
+   * VALUE: Pure structure — it ignores node status, so the cached SVG only needs
+   * rebuilding when the child graph's nodes/edges change.
+   */
+  private buildSubgraphPreview(graph: MermaidRuntime.Graph): { html: string; hash: string } {
+    const allEdges = this.resolveGraphEdges(graph);
+    const hash = `${graph.nodes.map((node) => node.id).join('|')}::${allEdges
+      .map((edge) => `${edge.from}>${edge.to}`)
+      .join('|')}`;
+
+    const nodes = graph.nodes.slice(0, SUBGRAPH_PREVIEW_MAX_NODES);
+    const truncated = graph.nodes.length - nodes.length;
+    const ids = new Set(nodes.map((node) => node.id));
+    const edges = allEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
+
+    const depthById = this.computeGraphDepths(nodes, edges);
+    const hasOutgoing = new Set(edges.map((edge) => edge.from));
+
+    // Group nodes into columns by depth, preserving declaration order within each.
+    const columns: string[][] = [];
+    for (const node of nodes) {
+      const depth = depthById.get(node.id) ?? 0;
+      (columns[depth] ??= []).push(node.id);
+    }
+
+    const r = SUBGRAPH_PREVIEW_DOT_RADIUS_PX;
+    const pad = SUBGRAPH_PREVIEW_PADDING_PX;
+    const positionById = new Map<string, { x: number; y: number }>();
+    columns.forEach((column, depth) => {
+      column.forEach((id, row) => {
+        positionById.set(id, {
+          x: pad + r + depth * SUBGRAPH_PREVIEW_COLUMN_GAP_PX,
+          y: pad + r + row * SUBGRAPH_PREVIEW_ROW_GAP_PX,
+        });
+      });
+    });
+
+    const columnCount = Math.max(1, columns.length);
+    const maxRows = Math.max(1, ...columns.map((column) => column.length));
+    let width = pad * 2 + r * 2 + (columnCount - 1) * SUBGRAPH_PREVIEW_COLUMN_GAP_PX;
+    const height = pad * 2 + r * 2 + (maxRows - 1) * SUBGRAPH_PREVIEW_ROW_GAP_PX;
+
+    const edgeMarkup = edges
+      .map((edge) => {
+        const from = positionById.get(edge.from);
+        const to = positionById.get(edge.to);
+        if (!from || !to) return '';
+        return `<line class="sg-edge" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />`;
+      })
+      .join('');
+
+    const dotMarkup = nodes
+      .map((node) => {
+        const position = positionById.get(node.id);
+        if (!position) return '';
+        const terminalClass = hasOutgoing.has(node.id) ? '' : ' sg-dot--terminal';
+        return `<circle class="sg-dot${terminalClass}" cx="${position.x}" cy="${position.y}" r="${r}" />`;
+      })
+      .join('');
+
+    let overflowMarkup = '';
+    if (truncated > 0) {
+      const textX = width + 2;
+      width += SUBGRAPH_PREVIEW_OVERFLOW_LABEL_WIDTH_PX;
+      overflowMarkup = `<text class="sg-more" x="${textX}" y="${height / 2 + 3}">+${truncated}</text>`;
+    }
+
+    const html =
+      `<svg class="sg-svg" width="${width}" height="${height}" ` +
+      `viewBox="0 0 ${width} ${height}" aria-hidden="true">` +
+      `${edgeMarkup}${dotMarkup}${overflowMarkup}</svg>`;
+    return { html, hash };
+  }
+
+  /**
+   * Longest-path depth (column index) for each node in a child graph.
+   *
+   * VALUE: A topological pass (cycle-safe) that places dependents to the right of
+   * their prerequisites, giving the mini-preview a readable left-to-right flow.
+   */
+  private computeGraphDepths(
+    nodes: readonly MermaidRuntime.Node[],
+    edges: readonly { from: string; to: string }[],
+  ): Map<string, number> {
+    const depth = new Map<string, number>();
+    const indegree = new Map<string, number>();
+    const adjacency = new Map<string, string[]>();
+    for (const node of nodes) {
+      depth.set(node.id, 0);
+      indegree.set(node.id, 0);
+      adjacency.set(node.id, []);
+    }
+    for (const edge of edges) {
+      adjacency.get(edge.from)?.push(edge.to);
+      indegree.set(edge.to, (indegree.get(edge.to) ?? 0) + 1);
+    }
+    const queue = [...indegree.keys()].filter((id) => (indegree.get(id) ?? 0) === 0);
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      for (const next of adjacency.get(current) ?? []) {
+        depth.set(next, Math.max(depth.get(next) ?? 0, (depth.get(current) ?? 0) + 1));
+        const remaining = (indegree.get(next) ?? 0) - 1;
+        indegree.set(next, remaining);
+        if (remaining === 0) queue.push(next);
+      }
+    }
+    return depth;
+  }
+
+  /** Resolve a child graph's edges (explicit → per-node → dependencies). */
+  private resolveGraphEdges(graph: MermaidRuntime.Graph): { from: string; to: string }[] {
+    const explicit = graph.transitions ?? [];
+    const perNode = graph.nodes.flatMap((node) => node.transitions ?? []);
+    const transitions = explicit.length > 0 ? explicit : perNode;
+    if (transitions.length > 0) {
+      return transitions.map((transition) => ({ from: transition.from, to: transition.to }));
+    }
+    return graph.nodes.flatMap((node) =>
+      (node.dependencies ?? []).map((dependency) => ({ from: dependency, to: node.id })),
+    );
   }
 
   // ── Subgraph navigation ────────────────────────────────────────────

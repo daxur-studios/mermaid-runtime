@@ -226,6 +226,42 @@
   background: var(--app-color-pass);
 }
 
+// ── Inline subgraph preview (decorative thumbnail) ─────────────────
+
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.3rem;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.85;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview .sg-svg {
+  overflow: visible;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview .sg-edge {
+  stroke: var(--mat-sys-outline);
+  stroke-width: 1;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview .sg-dot {
+  fill: var(--mat-sys-surface-container-high);
+  stroke: var(--mat-sys-outline);
+  stroke-width: 0.75;
+}
+
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview .sg-dot--terminal {
+  fill: var(--mat-sys-primary);
+  stroke: var(--mat-sys-primary);
+}
+
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview .sg-more {
+  fill: var(--mat-sys-on-surface-variant);
+  font-size: 7px;
+}
+
 // ── Status classes ─────────────────────────────────────────────────
 
 :host ::ng-deep .mermaid .node.current .basic,

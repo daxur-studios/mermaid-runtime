@@ -85,6 +85,13 @@ export class TaskGraphComponent {
   readonly showBreadcrumb = input<boolean>(true);
 
   /**
+   * Whether drillable nodes show a small, static thumbnail of their child graph.
+   *
+   * VALUE: Decorative only; set false to drop the inline subgraph previews.
+   */
+  readonly showSubgraphPreview = input<boolean>(true);
+
+  /**
    * Resolves a node's child graph. When omitted, the node's inline
    * `subgraph` is used.
    */
