@@ -15,9 +15,10 @@ import {
 import { CommonModule } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MarkdownModule, MermaidAPI } from 'ngx-markdown';
+import { from } from 'rxjs';
 
 import { MermaidRuntime } from './task-graph-model';
-import { LocalDaemonService } from '@app/core/services/daemon/local-daemon.service';
+import { TASK_GRAPH_REF_LOADER } from './task-graph-ref-loader';
 import { GraphCameraComponent } from '../graph-camera/graph-camera.component';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -220,7 +221,8 @@ const DEFAULT_MERMAID_OPTIONS: MermaidAPI.MermaidConfig = {
 export class TaskGraphComponent {
   private readonly hostElement = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly daemonService = inject(LocalDaemonService);
+  /** Host-supplied loader for node-ref previews; absent when no inspector backend. */
+  private readonly refLoader = inject(TASK_GRAPH_REF_LOADER, { optional: true });
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
 
   /** Execution nodes to render. The host owns their lifecycle and status. */
@@ -933,13 +935,14 @@ export class TaskGraphComponent {
   }
 
   /**
-   * Load a clicked node ref through the local daemon preview route.
+   * Load a clicked node ref through the host-supplied {@link TaskGraphRefLoader}.
    *
-   * PURPOSE: Turn published node refs into inspectable evidence without exposing
-   * arbitrary local paths in browser requests.
+   * PURPOSE: Turn published node refs into inspectable evidence without the
+   * viewer knowing how the host fetches them.
    *
    * VALUE: Inputs, outputs, context, logs, and artifacts become reviewable from
-   * the same reusable graph component that shows node status.
+   * the same reusable graph component, while the backend (daemon HTTP route, a
+   * different API, or in-memory data) stays a pluggable seam.
    */
   protected openNodeRef(
     nodeId: string,
@@ -951,14 +954,18 @@ export class TaskGraphComponent {
     this.selectedRefContent.set(null);
     this.selectedRefError.set(null);
 
+    const loader = this.refLoader;
+    if (!loader) {
+      this.selectedRefError.set('No ref loader is configured for this graph.');
+      return;
+    }
     if (!runId) {
       this.selectedRefError.set('No task run id is available for this ref.');
       return;
     }
 
     this.selectedRefLoading.set(true);
-    this.daemonService
-      .getTaskRunRef(runId, nodeId, refKind, ref.id)
+    from(loader.loadRef({ runId, nodeId, refKind, refId: ref.id, ref }))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (content) => {
