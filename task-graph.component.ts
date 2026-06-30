@@ -15,7 +15,7 @@ import { CommonModule } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MarkdownModule, MermaidAPI } from 'ngx-markdown';
 
-import { TaskGraphModel } from './task-graph-model';
+import { MermaidRuntime } from './task-graph-model';
 import { LocalDaemonService } from '@app/core/services/daemon/local-daemon.service';
 import { GraphCameraComponent } from '../graph-camera/graph-camera.component';
 import { MatIconModule } from '@angular/material/icon';
@@ -26,9 +26,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
  *
  * Value: Re-exported from the viewer's self-owned model so existing consumers
  * keep importing `TaskGraphNodeDecoration` from this component while the canonical
- * definition lives in `TaskGraphModel` (the extractable library surface).
+ * definition lives in `MermaidRuntime` (the extractable library surface).
  */
-export type TaskGraphNodeDecoration = TaskGraphModel.NodeDecoration;
+export type TaskGraphNodeDecoration = MermaidRuntime.NodeDecoration;
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface TaskGraphEdge {
@@ -51,8 +51,8 @@ interface TaskGraphAliasMap {
  */
 interface TaskGraphRefGroup {
   title: string;
-  kind: TaskGraphModel.InspectableRefKind;
-  refs: TaskGraphModel.InspectableRef[];
+  kind: MermaidRuntime.InspectableRefKind;
+  refs: MermaidRuntime.InspectableRef[];
 }
 
 /**
@@ -63,8 +63,8 @@ interface TaskGraphRefGroup {
  */
 interface SelectedTaskGraphRef {
   nodeId: string;
-  refKind: TaskGraphModel.InspectableRefKind;
-  ref: TaskGraphModel.InspectableRef;
+  refKind: MermaidRuntime.InspectableRefKind;
+  ref: MermaidRuntime.InspectableRef;
 }
 
 /** Query parameter used to encode the real node id in Mermaid click hrefs. */
@@ -79,7 +79,7 @@ const NODE_HREF_PARAM = 'node';
  * tear down and rebuild the SVG for every running/done/failed transition.
  */
 const STATUS_CLASS_BY_STATUS: Partial<
-  Record<TaskGraphModel.NodeStatus, string>
+  Record<MermaidRuntime.NodeStatus, string>
 > = {
   complete: 'done',
   failed: 'failed',
@@ -180,13 +180,13 @@ export class TaskGraphComponent {
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
 
   /** Execution nodes to render. The host owns their lifecycle and status. */
-  readonly nodes = input.required<TaskGraphModel.Node[]>();
+  readonly nodes = input.required<MermaidRuntime.Node[]>();
 
   /**
    * Runtime/story edges. When omitted, edges fall back to per-node
    * `transitions`, then to `dependencies` so a dependency-only graph still draws.
    */
-  readonly transitions = input<TaskGraphModel.Transition[] | null>(null);
+  readonly transitions = input<MermaidRuntime.Transition[] | null>(null);
 
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
@@ -221,7 +221,7 @@ export class TaskGraphComponent {
 
   protected readonly copiedNodeId = signal<string | null>(null);
 
-  protected copyNodeForAgent(node: TaskGraphModel.Node): void {
+  protected copyNodeForAgent(node: MermaidRuntime.Node): void {
     const lines: string[] = [];
     const runId = this.runId();
     if (runId) {
@@ -280,7 +280,7 @@ export class TaskGraphComponent {
 
   protected readonly selectedRef = signal<SelectedTaskGraphRef | null>(null);
 
-  protected readonly selectedRefContent = signal<TaskGraphModel.RefContent | null>(null);
+  protected readonly selectedRefContent = signal<MermaidRuntime.RefContent | null>(null);
 
   protected readonly selectedRefLoading = signal(false);
 
@@ -372,7 +372,7 @@ export class TaskGraphComponent {
     });
   }
 
-  private buildAliasMap(nodes: readonly TaskGraphModel.Node[]): TaskGraphAliasMap {
+  private buildAliasMap(nodes: readonly MermaidRuntime.Node[]): TaskGraphAliasMap {
     const toAlias = new Map<string, string>();
     const toReal = new Map<string, string>();
     nodes.forEach((node, index) => {
@@ -413,7 +413,7 @@ export class TaskGraphComponent {
   }
 
   private buildNodeDefinitionLine(
-    node: TaskGraphModel.Node,
+    node: MermaidRuntime.Node,
     alias: string,
     decoration: TaskGraphNodeDecoration | undefined,
   ): string {
@@ -482,7 +482,7 @@ export class TaskGraphComponent {
     );
   }
 
-  private buildNodeClickLine(node: TaskGraphModel.Node, alias: string): string {
+  private buildNodeClickLine(node: MermaidRuntime.Node, alias: string): string {
     const tooltip = this.escapeMermaidString(`View ${node.title}`);
     return `  click ${alias} "?${NODE_HREF_PARAM}=${encodeURIComponent(node.id)}" "${tooltip}"`;
   }
@@ -739,7 +739,7 @@ export class TaskGraphComponent {
    * VALUE: Any task that publishes refs gets clickable inputs, outputs, context,
    * logs, and artifacts without a task-specific component.
    */
-  private buildRefGroups(node: TaskGraphModel.Node): TaskGraphRefGroup[] {
+  private buildRefGroups(node: MermaidRuntime.Node): TaskGraphRefGroup[] {
     const groups: TaskGraphRefGroup[] = [
       { title: 'Inputs', kind: 'input', refs: node.inputRefs ?? [] },
       { title: 'Outputs', kind: 'output', refs: node.outputRefs ?? [] },
@@ -761,8 +761,8 @@ export class TaskGraphComponent {
    */
   protected openNodeRef(
     nodeId: string,
-    refKind: TaskGraphModel.InspectableRefKind,
-    ref: TaskGraphModel.InspectableRef,
+    refKind: MermaidRuntime.InspectableRefKind,
+    ref: MermaidRuntime.InspectableRef,
   ): void {
     const runId = this.runId();
     this.selectedRef.set({ nodeId, refKind, ref });
@@ -802,7 +802,7 @@ export class TaskGraphComponent {
    */
   protected isSelectedRef(
     nodeId: string,
-    refKind: TaskGraphModel.InspectableRefKind,
+    refKind: MermaidRuntime.InspectableRefKind,
     refId: string,
   ): boolean {
     const selected = this.selectedRef();
@@ -816,7 +816,7 @@ export class TaskGraphComponent {
    *
    * VALUE: The template stays readable while preserving each ref's original shape.
    */
-  protected readRefLabel(ref: TaskGraphModel.InspectableRef): string {
+  protected readRefLabel(ref: MermaidRuntime.InspectableRef): string {
     return 'label' in ref && ref.label ? ref.label : ref.id;
   }
 
@@ -827,7 +827,7 @@ export class TaskGraphComponent {
    *
    * VALUE: Ref rows remain useful even when a task only publishes a file pointer.
    */
-  protected readRefSummary(ref: TaskGraphModel.InspectableRef): string {
+  protected readRefSummary(ref: MermaidRuntime.InspectableRef): string {
     const pathValue = this.readRefPath(ref);
     return ref.summary || pathValue || ('eventId' in ref && ref.eventId ? ref.eventId : '');
   }
@@ -839,7 +839,7 @@ export class TaskGraphComponent {
    *
    * VALUE: Event-only refs can render without showing an empty path row.
    */
-  protected readRefPath(ref: TaskGraphModel.InspectableRef): string | null {
+  protected readRefPath(ref: MermaidRuntime.InspectableRef): string | null {
     return 'path' in ref && typeof ref.path === 'string' && ref.path.trim().length > 0 ? ref.path : null;
   }
 
@@ -850,7 +850,7 @@ export class TaskGraphComponent {
    *
    * VALUE: Structured node context is easier to inspect without changing how refs are stored.
    */
-  private formatTaskRunRefContent(content: TaskGraphModel.RefContent): string {
+  private formatTaskRunRefContent(content: MermaidRuntime.RefContent): string {
     if (content.contentType !== 'application/json') {
       return content.content;
     }

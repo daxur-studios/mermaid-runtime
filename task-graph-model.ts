@@ -15,7 +15,7 @@
  *
  * See `docs/draft/033_task-graph-library-extraction.md` for the extraction plan.
  */
-export namespace TaskGraphModel {
+export namespace MermaidRuntime {
   /**
    * Execution state of a single graph node.
    *
