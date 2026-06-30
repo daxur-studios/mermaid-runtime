@@ -316,3 +316,51 @@
   filter: drop-shadow(0 0 0.35rem var(--mat-sys-primary));
   stroke-width: 3px !important;
 }
+
+// ── Node Outline Pulse Animations ───────────────────────────────────
+
+:host ::ng-deep .mermaid .node.pulse-active .basic,
+:host ::ng-deep .mermaid .node.pulse-active .label-container,
+:host ::ng-deep .mermaid .node.pulse-active polygon,
+:host ::ng-deep .mermaid .node.pulse-active rect {
+  stroke-width: 6px !important;
+  transition: stroke-width 0.1s cubic-bezier(0.1, 0.8, 0.3, 1) !important;
+}
+
+// ── Connection Line Styling & Marching Ants ──────────────────────────
+
+@keyframes edge-marching-ants {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+// 1. Base flowchart lines transition smoothly
+:host ::ng-deep .mermaid path.flowchart-link {
+  transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
+
+// 2. Settled Connection States (Solid colors)
+:host ::ng-deep .mermaid path.flowchart-link.edge-status--done {
+  stroke: var(--app-color-pass) !important;
+  stroke-width: 2px !important;
+}
+:host ::ng-deep .mermaid path.flowchart-link.edge-status--failed {
+  stroke: var(--app-color-fail) !important;
+  stroke-width: 2px !important;
+}
+
+// 3. Transitioning Connection States (Dashed & Moving)
+:host ::ng-deep .mermaid path.flowchart-link.edge-status--running,
+:host ::ng-deep .mermaid path.flowchart-link.edge-pulse--done {
+  stroke: var(--app-color-pass) !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 4 !important;
+  animation: edge-marching-ants 1s linear infinite !important;
+}
+:host ::ng-deep .mermaid path.flowchart-link.edge-pulse--failed {
+  stroke: var(--app-color-fail) !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 4 !important;
+  animation: edge-marching-ants 1s linear infinite !important;
+}

@@ -416,7 +416,11 @@ export class GraphCanvasComponent {
   private lastFollowOn = false;
 
   /** A follow re-frame is already queued for the next frame (coalesces bursts). */
+  private toggleState = false; // dummy or spacer if needed, let's keep it clean
   private followFramePending = false;
+
+  /** Track previous status of each node to detect transitions for pulse animations. */
+  private readonly previousStatuses = new Map<string, string>();
 
   constructor() {
     const host = this.hostElement.nativeElement;
@@ -793,6 +797,15 @@ export class GraphCanvasComponent {
     const currentId = this.currentNodeId();
     const styles = this.effectiveStatusStyles();
     const stripClasses = [...this.statusClassNames(), CURRENT_NODE_CLASS, HAS_SUBGRAPH_CLASS];
+
+    // Clean up stale nodes from previousStatuses map (e.g. after subgraph navigation)
+    const activeIds = new Set(this.activeNodes().map((n) => n.id));
+    for (const key of this.previousStatuses.keys()) {
+      if (!activeIds.has(key)) {
+        this.previousStatuses.delete(key);
+      }
+    }
+
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       if (!element) continue;
@@ -801,7 +814,109 @@ export class GraphCanvasComponent {
       if (statusClass) element.classList.add(statusClass);
       if (node.id === currentId) element.classList.add(CURRENT_NODE_CLASS);
       if (this.resolveSubgraph(node)) element.classList.add(HAS_SUBGRAPH_CLASS);
+
+      // Detect transitions and trigger the generic pulse animations
+      const prevStatus = this.previousStatuses.get(node.id);
+      if (prevStatus !== undefined && prevStatus !== node.status) {
+        if (statusClass) {
+          this.triggerNodePulse(node.id);
+          this.triggerIncomingEdgesPulse(node.id, statusClass);
+        }
+      }
+      this.previousStatuses.set(node.id, node.status);
     }
+
+    // Keep connection lines styled based on target node states
+    this.applyEdgeStatusClasses();
+  }
+
+  /** Temporarily thickens the node border outline using a generic animation */
+  private triggerNodePulse(nodeId: string): void {
+    const element = this.findNodeElement(nodeId);
+    if (!element) return;
+
+    element.classList.add('pulse-active');
+    setTimeout(() => element.classList.remove('pulse-active'), 500);
+  }
+
+  /** Temporarily makes incoming connections dashed and moving */
+  private triggerIncomingEdgesPulse(nodeId: string, statusClass: string): void {
+    const { toAlias } = this.aliasMap();
+    const pulseClass = `edge-pulse--${statusClass}`;
+    const nodes = this.activeNodes();
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+    for (const edge of this.resolveEdges()) {
+      if (edge.to !== nodeId) continue;
+
+      const parentNode = nodeMap.get(edge.from);
+      // Only pulse incoming connection lines if the parent node was completed
+      if (!parentNode || parentNode.status !== 'complete') continue;
+
+      const parentAlias = toAlias.get(edge.from);
+      const childAlias = toAlias.get(edge.to);
+      if (!parentAlias || !childAlias) continue;
+
+      const edgeEl = this.findEdgeElement(parentAlias, childAlias);
+      if (!edgeEl) continue;
+
+      edgeEl.classList.add(pulseClass);
+      setTimeout(() => edgeEl.classList.remove(pulseClass), 1000);
+    }
+  }
+
+  /** Applies status class modifiers to connection lines leading to nodes */
+  private applyEdgeStatusClasses(): void {
+    const { toAlias } = this.aliasMap();
+    const host = this.hostElement.nativeElement;
+    const styles = this.effectiveStatusStyles();
+    const nodes = this.activeNodes();
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+    // Clean up any old edge status classes first from the flowchart link paths
+    for (const edgeEl of host.querySelectorAll('.mermaid .flowchart-link')) {
+      const toRemove: string[] = [];
+      for (let i = 0; i < edgeEl.classList.length; i++) {
+        const cls = edgeEl.classList[i];
+        if (cls.startsWith('edge-status--')) {
+          toRemove.push(cls);
+        }
+      }
+      if (toRemove.length > 0) {
+        edgeEl.classList.remove(...toRemove);
+      }
+    }
+
+    for (const edge of this.resolveEdges()) {
+      const parentAlias = toAlias.get(edge.from);
+      const childAlias = toAlias.get(edge.to);
+      if (!parentAlias || !childAlias) continue;
+
+      const parentNode = nodeMap.get(edge.from);
+      const childNode = nodeMap.get(edge.to);
+      if (!parentNode || !childNode) continue;
+
+      // Only color the connection line if the parent node has successfully completed
+      if (parentNode.status === 'complete') {
+        const edgeEl = this.findEdgeElement(parentAlias, childAlias);
+        if (!edgeEl) continue;
+
+        const statusClass = styles[childNode.status]?.className;
+        if (statusClass) {
+          edgeEl.classList.add(`edge-status--${statusClass}`);
+        }
+      }
+    }
+  }
+
+  /** Find a rendered Mermaid edge container in the DOM by its start and end node aliases */
+  private findEdgeElement(parentAlias: string, childAlias: string): HTMLElement | null {
+    const host = this.hostElement.nativeElement;
+    return (
+      host.querySelector(`.mermaid [data-id^="L_${parentAlias}_${childAlias}_"]`) ??
+      host.querySelector(`.mermaid [id*="-L_${parentAlias}_${childAlias}_"]`) ??
+      null
+    );
   }
 
   /**
