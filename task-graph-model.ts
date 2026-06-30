@@ -34,6 +34,32 @@ export namespace MermaidRuntime {
     | 'skipped'
     | (string & {});
 
+  /**
+   * Visual treatment for one execution status.
+   *
+   * PURPOSE: Let a host map its own status vocabulary to a CSS class (and label)
+   * instead of the viewer hardcoding a fixed set of states.
+   *
+   * VALUE: A consuming project supplies a `statusStyles` map and the viewer
+   * colours nodes accordingly; the built-in five are merely the default map, so
+   * projects with extra states (`queued`, `blocked`, …) style them without
+   * touching the library.
+   */
+  export interface StatusStyle {
+    /** CSS class added to the rendered node element for nodes in this status. */
+    className: string;
+    /** Optional human-readable label for legends/inspectors. */
+    label?: string;
+  }
+
+  /**
+   * Map of execution status → visual treatment.
+   *
+   * VALUE: Open like {@link NodeStatus} — a host can override the defaults and add
+   * its own states in the same object.
+   */
+  export type StatusStyleMap = Partial<Record<NodeStatus, StatusStyle>>;
+
   /** A directed runtime edge between two nodes, with an optional label/condition. */
   export interface Transition {
     from: string;
@@ -124,6 +150,18 @@ export namespace MermaidRuntime {
     status: NodeStatus;
     detail?: string | null;
     error?: string | null;
+
+    /**
+     * Optional display metadata shown in the inspector (kind + timing).
+     *
+     * VALUE: Mirrors the daemon's `TaskRunNode` fields so its nodes render full
+     * detail, while leaner hosts may omit them — the inspector hides absent rows.
+     */
+    type?: string | null;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    durationMs?: number | null;
+
     dependencies?: string[] | null;
     transitions?: Transition[] | null;
     progressPercent?: number | null;

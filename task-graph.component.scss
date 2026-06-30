@@ -58,6 +58,75 @@
   padding: 0.75rem;
 }
 
+// Breadcrumb overlay — shown only while inside a subgraph.
+.task-graph__breadcrumb {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: calc(100% - 24px);
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 999px;
+  background: var(--mat-sys-surface-container);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.task-graph__crumb {
+  padding: 0.15rem 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.76rem;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--mat-sys-on-surface);
+  }
+
+  &--current {
+    color: var(--mat-sys-on-surface);
+    font-weight: 600;
+    cursor: default;
+  }
+}
+
+.task-graph__crumb-sep {
+  color: var(--mat-sys-outline);
+  font-size: 0.8rem;
+}
+
+.task-graph__enter-subgraph {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-start;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--mat-sys-primary);
+  border-radius: 6px;
+  background: var(--app-color-running-bg);
+  color: var(--mat-sys-on-surface);
+  font-size: 0.78rem;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  mat-icon {
+    width: 1rem;
+    height: 1rem;
+    font-size: 1rem;
+    line-height: 1rem;
+  }
+}
+
 .task-graph__inspector {
   display: flex;
   flex-direction: column;
@@ -346,6 +415,16 @@
 
 :host ::ng-deep .mermaid .node.clickable {
   cursor: pointer;
+}
+
+// Drillable nodes (those with a subgraph) get a dashed accent outline and a
+// hint that a double-click enters them.
+:host ::ng-deep .mermaid .node.has-subgraph .basic,
+:host ::ng-deep .mermaid .node.has-subgraph .label-container,
+:host ::ng-deep .mermaid .node.has-subgraph polygon,
+:host ::ng-deep .mermaid .node.has-subgraph rect {
+  stroke-dasharray: 5 3;
+  stroke: var(--mat-sys-primary) !important;
 }
 
 // Node labels sit inside the `click` anchor. Anchors start a link/ghost drag and

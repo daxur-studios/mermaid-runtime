@@ -9,6 +9,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -67,35 +68,78 @@ interface SelectedTaskGraphRef {
   ref: MermaidRuntime.InspectableRef;
 }
 
+/**
+ * One drilled-into level on the subgraph navigation stack.
+ *
+ * Value: Captures the parent node we entered, its breadcrumb label, and the
+ * child graph rendered at this level, so the viewer can render and leave any
+ * depth without re-resolving the chain.
+ */
+interface GraphFrame {
+  /** Real id (in its parent graph) of the node that was entered. */
+  nodeId: string;
+  /** Label shown for this level in the breadcrumb. */
+  label: string;
+  /** The child graph rendered at this level. */
+  graph: MermaidRuntime.Graph;
+}
+
+/** A breadcrumb entry: a navigable depth in the graph stack (0 = root). */
+interface GraphCrumb {
+  label: string;
+  depth: number;
+}
+
+/**
+ * Payload emitted when the user enters or leaves a subgraph.
+ *
+ * Value: Carries the full root→current node-id path so a host can mirror depth
+ * into its router/history for browser back/forward.
+ */
+export interface SubgraphNavEvent {
+  /** Node-id path from root to the current level (empty at root). */
+  path: string[];
+  /** The node drilled into for the current level, or null at root. */
+  nodeId: string | null;
+  /** The current level's breadcrumb label, or null at root. */
+  label: string | null;
+}
+
 /** Query parameter used to encode the real node id in Mermaid click hrefs. */
 const NODE_HREF_PARAM = 'node';
 
 /**
- * Maps an execution status to the CSS class applied to its live `.node` element.
+ * Built-in status → visual-treatment map, merged under any host `statusStyles`.
  *
- * PURPOSE: Keep execution-state styling out of the Mermaid source.
+ * PURPOSE: Give the five daemon-default states their colours while keeping status
+ * styling out of the Mermaid source (applied as DOM classes after render).
  *
- * VALUE: Status changes update the rendered DOM in place, so Mermaid does not
- * tear down and rebuild the SVG for every running/done/failed transition.
+ * VALUE: Status changes update the rendered DOM in place — Mermaid never tears
+ * down and rebuilds the SVG for a running/done/failed transition — and a host can
+ * override or extend this map without forking the component.
  */
-const STATUS_CLASS_BY_STATUS: Partial<
-  Record<MermaidRuntime.NodeStatus, string>
-> = {
-  complete: 'done',
-  failed: 'failed',
-  skipped: 'skipped',
-  running: 'running',
+const DEFAULT_STATUS_STYLES: MermaidRuntime.StatusStyleMap = {
+  running: { className: 'running', label: 'Running' },
+  complete: { className: 'done', label: 'Complete' },
+  failed: { className: 'failed', label: 'Failed' },
+  skipped: { className: 'skipped', label: 'Skipped' },
 };
 
 /**
- * Status/current classes removed before each status re-application.
+ * CSS class marking the live "current" focus node.
  *
- * PURPOSE: Make status styling idempotent after every graph update.
- *
- * VALUE: Stale visual state never sticks to a node after its execution status
- * changes.
+ * VALUE: Kept separate from status classes so the focus highlight and the
+ * execution colour are applied and stripped independently.
  */
-const ALL_STATUS_CLASSES = ['done', 'failed', 'skipped', 'running', 'current'] as const;
+const CURRENT_NODE_CLASS = 'current';
+
+/**
+ * CSS class marking a node the user can drill into (it resolves to a subgraph).
+ *
+ * VALUE: Lets the stylesheet flag drillable nodes (badge/affordance) without the
+ * host having to decorate them.
+ */
+const HAS_SUBGRAPH_CLASS = 'has-subgraph';
 
 /**
  * Zoom cap when follow-execution frames the running nodes.
@@ -204,6 +248,40 @@ export class TaskGraphComponent {
   readonly decorations = input<Record<string, TaskGraphNodeDecoration>>({});
 
   /**
+   * Status → visual-treatment overrides, merged over {@link DEFAULT_STATUS_STYLES}.
+   *
+   * VALUE: A host defines its own status vocabulary/colours (and can add states
+   * beyond the built-in five) without forking the component.
+   */
+  readonly statusStyles = input<MermaidRuntime.StatusStyleMap>({});
+
+  /** Breadcrumb label for the root (top-level) graph. */
+  readonly rootLabel = input<string>('Main');
+
+  /** Whether to render the breadcrumb overlay while inside a subgraph. */
+  readonly showBreadcrumb = input<boolean>(true);
+
+  /**
+   * Resolves a node's child graph. When omitted, the node's inline
+   * `subgraph` is used.
+   *
+   * VALUE: Lets daemon-style hosts turn a `subgraphId` into a `Graph` lazily,
+   * while inline-graph hosts need supply nothing.
+   */
+  readonly subgraphResolver = input<
+    ((node: MermaidRuntime.Node) => MermaidRuntime.Graph | null) | null
+  >(null);
+
+  /**
+   * Externally-controlled subgraph path (root node ids drilled into).
+   *
+   * VALUE: The history seam — a host drives this from its router so browser
+   * back/forward can restore the viewer's depth; the viewer reconciles its stack
+   * to match and emits {@link graphPathChange} when the user navigates.
+   */
+  readonly path = input<readonly string[]>([]);
+
+  /**
    * When true, the camera keeps the running ("green") nodes framed as the run
    * progresses. A manual pan/zoom pauses it until the host re-enables follow or
    * the user clicks the re-center chip.
@@ -213,11 +291,75 @@ export class TaskGraphComponent {
   /** Emits the real node id when a node is clicked. */
   readonly nodeSelected = output<string>();
 
+  /** Emits when the user drills into a node's subgraph. */
+  readonly subgraphEntered = output<SubgraphNavEvent>();
+
+  /** Emits when the user leaves a subgraph (one or more levels up). */
+  readonly subgraphLeft = output<SubgraphNavEvent>();
+
+  /**
+   * Emits the new root→current node-id path whenever the user enters or leaves a
+   * subgraph.
+   *
+   * VALUE: The single output a host wires to its history (push on change, restore
+   * via the {@link path} input on back/forward).
+   */
+  readonly graphPathChange = output<string[]>();
+
   protected readonly mermaidOptions = DEFAULT_MERMAID_OPTIONS;
 
   private readonly internalSelectedNodeId = signal<string | null>(null);
 
-  private readonly aliasMap = computed<TaskGraphAliasMap>(() => this.buildAliasMap(this.nodes()));
+  /**
+   * Subgraph navigation stack. Empty = root graph; each frame is one level the
+   * user has drilled into. The top frame decides what the viewer renders.
+   */
+  private readonly graphStack = signal<GraphFrame[]>([]);
+
+  /** Nodes for the level currently shown — the root input, or the top frame. */
+  private readonly activeNodes = computed<MermaidRuntime.Node[]>(() => {
+    const stack = this.graphStack();
+    const top = stack[stack.length - 1];
+    return top ? top.graph.nodes : this.nodes();
+  });
+
+  /** Transitions for the level currently shown — the root input, or the top frame. */
+  private readonly activeTransitions = computed<MermaidRuntime.Transition[] | null>(() => {
+    const stack = this.graphStack();
+    const top = stack[stack.length - 1];
+    return top ? top.graph.transitions ?? null : this.transitions();
+  });
+
+  /** True while inside a subgraph (the stack is non-empty). */
+  protected readonly inSubgraph = computed(() => this.graphStack().length > 0);
+
+  /** Breadcrumb trail (root + each entered level); empty at the root graph. */
+  protected readonly breadcrumb = computed<GraphCrumb[]>(() => {
+    const stack = this.graphStack();
+    if (stack.length === 0) return [];
+    const crumbs: GraphCrumb[] = [{ label: this.rootLabel(), depth: 0 }];
+    stack.forEach((frame, index) => crumbs.push({ label: frame.label, depth: index + 1 }));
+    return crumbs;
+  });
+
+  /** Built-in status styles with any host `statusStyles` merged over them. */
+  private readonly effectiveStatusStyles = computed<MermaidRuntime.StatusStyleMap>(() => ({
+    ...DEFAULT_STATUS_STYLES,
+    ...this.statusStyles(),
+  }));
+
+  /** Every CSS class the status map can apply — stripped before re-applying. */
+  private readonly statusClassNames = computed<string[]>(() => {
+    const names = new Set<string>();
+    for (const style of Object.values(this.effectiveStatusStyles())) {
+      if (style?.className) names.add(style.className);
+    }
+    return [...names];
+  });
+
+  private readonly aliasMap = computed<TaskGraphAliasMap>(() =>
+    this.buildAliasMap(this.activeNodes()),
+  );
 
   protected readonly copiedNodeId = signal<string | null>(null);
 
@@ -256,12 +398,13 @@ export class TaskGraphComponent {
   protected readonly flowMarkdown = computed(() => `\`\`\`mermaid\n${this.buildGraph()}\n\`\`\``);
 
   protected readonly effectiveSelectedNodeId = computed(() => {
+    const nodes = this.activeNodes();
     return (
       this.selectedNodeId() ??
       this.internalSelectedNodeId() ??
       this.currentNodeId() ??
-      this.nodes().find((node) => node.status === 'running')?.id ??
-      this.nodes()[0]?.id ??
+      nodes.find((node) => node.status === 'running')?.id ??
+      nodes[0]?.id ??
       null
     );
   });
@@ -269,7 +412,13 @@ export class TaskGraphComponent {
   protected readonly selectedNode = computed(() => {
     const selectedId = this.effectiveSelectedNodeId();
     if (!selectedId) return null;
-    return this.nodes().find((node) => node.id === selectedId) ?? null;
+    return this.activeNodes().find((node) => node.id === selectedId) ?? null;
+  });
+
+  /** Whether the selected node can be drilled into (resolves to a subgraph). */
+  protected readonly selectedNodeHasSubgraph = computed(() => {
+    const node = this.selectedNode();
+    return !!node && !!this.resolveSubgraph(node);
   });
 
   protected readonly selectedNodeRefGroups = computed(() => {
@@ -293,7 +442,7 @@ export class TaskGraphComponent {
 
   /** Ids of the currently running nodes, joined — drives follow re-framing. */
   private readonly runningKey = computed(() =>
-    this.nodes()
+    this.activeNodes()
       .filter((node) => node.status === 'running')
       .map((node) => node.id)
       .join(','),
@@ -301,14 +450,14 @@ export class TaskGraphComponent {
 
   /** Joined `id:status` pairs — drives live status-class application (no re-render). */
   private readonly statusKey = computed(() =>
-    this.nodes()
+    this.activeNodes()
       .map((node) => `${node.id}:${node.status}`)
       .join(','),
   );
 
   /** Joined node progress values — drives live progress-bar DOM updates. */
   private readonly progressKey = computed(() =>
-    this.nodes()
+    this.activeNodes()
       .map((node) => `${node.id}:${node.progressPercent ?? ''}:${node.progressLabel ?? ''}`)
       .join(','),
   );
@@ -336,22 +485,34 @@ export class TaskGraphComponent {
   constructor() {
     const host = this.hostElement.nativeElement;
     const clickListener = (event: MouseEvent) => this.handleChartClick(event);
+    const dblClickListener = (event: MouseEvent) => this.handleChartDblClick(event);
     const chartObserver = new MutationObserver(() => this.onChartMutation());
     host.addEventListener('click', clickListener, true);
+    host.addEventListener('dblclick', dblClickListener, true);
     chartObserver.observe(host, { childList: true, subtree: true });
     this.destroyRef.onDestroy(() => {
       host.removeEventListener('click', clickListener, true);
+      host.removeEventListener('dblclick', dblClickListener, true);
       chartObserver.disconnect();
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
 
+    // Keep the navigation stack in sync with the host-controlled `path` input so
+    // browser back/forward can restore subgraph depth. Reads only `path` (and the
+    // resolver) tracked; the graph inputs are read untracked so replay status
+    // ticks never rebuild the stack.
+    effect(() => this.reconcileStackToPath(this.path()));
+
     // Status colouring and the "current" highlight live as DOM classes on the
-    // rendered nodes, applied whenever a status or the current focus changes.
-    // Because this never touches the Mermaid source, the SVG is not re-rendered.
+    // rendered nodes, applied whenever a status, the current focus, the style map,
+    // or the active level changes. Because this never touches the Mermaid source,
+    // the SVG is not re-rendered.
     effect(() => {
       this.statusKey();
       this.currentNodeId();
+      this.effectiveStatusStyles();
+      this.graphStack();
       this.scheduleStatusClasses();
     });
 
@@ -393,7 +554,7 @@ export class TaskGraphComponent {
    * so a run that merely advances statuses produces zero Mermaid re-renders.
    */
   private buildGraph(): string {
-    const nodes = this.nodes();
+    const nodes = this.activeNodes();
     const { toAlias } = this.aliasMap();
     const decorations = this.decorations();
     const aliasFor = (id: string): string | undefined => toAlias.get(id);
@@ -467,8 +628,9 @@ export class TaskGraphComponent {
 
   /** Prefer explicit transitions, then per-node transitions, then dependencies. */
   private resolveEdges(): TaskGraphEdge[] {
-    const explicit = this.transitions() ?? [];
-    const perNode = this.nodes().flatMap((node) => node.transitions ?? []);
+    const nodes = this.activeNodes();
+    const explicit = this.activeTransitions() ?? [];
+    const perNode = nodes.flatMap((node) => node.transitions ?? []);
     const transitions = explicit.length > 0 ? explicit : perNode;
     if (transitions.length > 0) {
       return transitions.map((transition) => ({
@@ -477,7 +639,7 @@ export class TaskGraphComponent {
         label: transition.label ?? undefined,
       }));
     }
-    return this.nodes().flatMap((node) =>
+    return nodes.flatMap((node) =>
       (node.dependencies ?? []).map((dependency) => ({ from: dependency, to: node.id })),
     );
   }
@@ -498,10 +660,12 @@ export class TaskGraphComponent {
     this.applyStatusClasses();
     this.applyNodeProgressBars();
 
-    if (this.followActive()) {
-      // First render (or a re-render) with follow on: frame the active node.
+    if (this.followActive() && this.activeFocusId()) {
+      // First render (or a re-render) with follow on and a focus node: frame it.
       this.requestFrameActiveNode();
     } else if (!this.hasFitInitialView) {
+      // No focus to follow (idle, or a freshly-entered subgraph): fit the whole
+      // level once so the new graph is visible.
       this.hasFitInitialView = true;
       requestAnimationFrame(() => this.cameraRef().fitAll());
     }
@@ -568,11 +732,12 @@ export class TaskGraphComponent {
 
   /** The node the camera should follow: the live focus, else a running node. */
   private activeFocusId(): string | null {
-    return (
-      this.currentNodeId() ??
-      this.nodes().find((node) => node.status === 'running')?.id ??
-      null
-    );
+    const nodes = this.activeNodes();
+    const currentId = this.currentNodeId();
+    // Only honour `currentNodeId` if it exists at the active level — it addresses
+    // the root graph and is meaningless inside a subgraph.
+    if (currentId && nodes.some((node) => node.id === currentId)) return currentId;
+    return nodes.find((node) => node.status === 'running')?.id ?? null;
   }
 
   /** Undirected 1-hop adjacency built from the resolved edges. */
@@ -618,6 +783,20 @@ export class TaskGraphComponent {
     this.nodeSelected.emit(nodeId);
   }
 
+  /** Double-click a drillable node to enter its subgraph. */
+  private handleChartDblClick(event: MouseEvent): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const linkElement = target.closest('a');
+    const nodeId = linkElement ? this.readNodeIdFromLink(linkElement) : null;
+    if (!nodeId) return;
+    const node = this.activeNodes().find((candidate) => candidate.id === nodeId);
+    if (!node || !this.resolveSubgraph(node)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.enterSubgraph(node);
+  }
+
   private readNodeIdFromLink(linkElement: Element): string | null {
     const href = linkElement.getAttribute('href') ?? linkElement.getAttribute('xlink:href');
     if (!href) return null;
@@ -655,13 +834,16 @@ export class TaskGraphComponent {
    */
   private applyStatusClasses(): void {
     const currentId = this.currentNodeId();
-    for (const node of this.nodes()) {
+    const styles = this.effectiveStatusStyles();
+    const stripClasses = [...this.statusClassNames(), CURRENT_NODE_CLASS, HAS_SUBGRAPH_CLASS];
+    for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       if (!element) continue;
-      element.classList.remove(...ALL_STATUS_CLASSES);
-      const statusClass = STATUS_CLASS_BY_STATUS[node.status];
+      element.classList.remove(...stripClasses);
+      const statusClass = styles[node.status]?.className;
       if (statusClass) element.classList.add(statusClass);
-      if (node.id === currentId) element.classList.add('current');
+      if (node.id === currentId) element.classList.add(CURRENT_NODE_CLASS);
+      if (this.resolveSubgraph(node)) element.classList.add(HAS_SUBGRAPH_CLASS);
     }
   }
 
@@ -674,7 +856,7 @@ export class TaskGraphComponent {
    * selected node stable while long-running work advances.
    */
   private applyNodeProgressBars(): void {
-    for (const node of this.nodes()) {
+    for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
       if (!element || !label) continue;
@@ -860,6 +1042,107 @@ export class TaskGraphComponent {
     } catch {
       return content.content;
     }
+  }
+
+  // ── Subgraph navigation ────────────────────────────────────────────
+
+  /** Resolve a node's child graph via the host resolver, else its inline graph. */
+  private resolveSubgraph(node: MermaidRuntime.Node): MermaidRuntime.Graph | null {
+    const resolver = this.subgraphResolver();
+    return (resolver ? resolver(node) : null) ?? node.subgraph ?? null;
+  }
+
+  /** Drill into a node's subgraph, pushing one level onto the stack. */
+  protected enterSubgraph(node: MermaidRuntime.Node): void {
+    const graph = this.resolveSubgraph(node);
+    if (!graph) return;
+    const frame: GraphFrame = {
+      nodeId: node.id,
+      label: node.subgraphLabel ?? node.title,
+      graph,
+    };
+    const next = [...this.graphStack(), frame];
+    this.graphStack.set(next);
+    this.onNavigated(next, 'enter');
+  }
+
+  /** Enter the currently-selected node's subgraph (inspector affordance). */
+  protected enterSelectedSubgraph(): void {
+    const node = this.selectedNode();
+    if (node) this.enterSubgraph(node);
+  }
+
+  /** Pop the stack back to `depth` (0 = root). Backs the breadcrumb crumbs. */
+  protected goToDepth(depth: number): void {
+    if (depth >= this.graphStack().length) return;
+    const next = this.graphStack().slice(0, depth);
+    this.graphStack.set(next);
+    this.onNavigated(next, 'leave');
+  }
+
+  /** Leave the current subgraph, one level up. */
+  protected leaveSubgraph(): void {
+    this.goToDepth(Math.max(0, this.graphStack().length - 1));
+  }
+
+  /**
+   * Shared after-navigation bookkeeping.
+   *
+   * PURPOSE: Reset per-level selection, re-fit the new level, and tell the host
+   * where we are via the nav outputs.
+   *
+   * VALUE: Enter, leave, and breadcrumb jumps all emit one consistent path so the
+   * host's history stays in lockstep with the viewer.
+   */
+  private onNavigated(stack: GraphFrame[], direction: 'enter' | 'leave'): void {
+    this.internalSelectedNodeId.set(null);
+    this.clearSelectedRef();
+    this.hasFitInitialView = false;
+    const top = stack[stack.length - 1] ?? null;
+    const path = stack.map((frame) => frame.nodeId);
+    const event: SubgraphNavEvent = {
+      path,
+      nodeId: top?.nodeId ?? null,
+      label: top?.label ?? null,
+    };
+    if (direction === 'enter') this.subgraphEntered.emit(event);
+    else this.subgraphLeft.emit(event);
+    this.graphPathChange.emit(path);
+  }
+
+  /**
+   * Rebuild the navigation stack to match a host-supplied node-id path.
+   *
+   * PURPOSE: Let the host restore subgraph depth from browser history without the
+   * viewer and the URL fighting each other.
+   *
+   * VALUE: A no-op when the stack already matches (so the echo from our own
+   * {@link graphPathChange} never loops), and it walks the chain from the root
+   * input, resolving each level — so deep links and back/forward land exactly
+   * where the user left off.
+   */
+  private reconcileStackToPath(desired: readonly string[]): void {
+    const current = untracked(() => this.graphStack()).map((frame) => frame.nodeId);
+    if (this.samePath(current, desired)) return;
+
+    const frames: GraphFrame[] = [];
+    let nodes = untracked(() => this.nodes());
+    for (const nodeId of desired) {
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) break;
+      const graph = this.resolveSubgraph(node);
+      if (!graph) break;
+      frames.push({ nodeId, label: node.subgraphLabel ?? node.title, graph });
+      nodes = graph.nodes;
+    }
+    this.graphStack.set(frames);
+    this.internalSelectedNodeId.set(null);
+    this.hasFitInitialView = false;
+  }
+
+  /** Shallow ordered equality for two node-id paths. */
+  private samePath(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
   }
 
   /**

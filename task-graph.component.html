@@ -14,6 +14,25 @@
         Re-center on running
       </button>
     }
+
+    @if (showBreadcrumb() && breadcrumb().length > 0) {
+      <nav class="task-graph__breadcrumb" aria-label="Subgraph path">
+        @for (crumb of breadcrumb(); track crumb.depth; let last = $last) {
+          <button
+            type="button"
+            class="task-graph__crumb"
+            [class.task-graph__crumb--current]="last"
+            [disabled]="last"
+            (click)="goToDepth(crumb.depth)"
+          >
+            {{ crumb.label }}
+          </button>
+          @if (!last) {
+            <span class="task-graph__crumb-sep" aria-hidden="true">›</span>
+          }
+        }
+      </nav>
+    }
   </div>
 
   @if (showInspector()) {
@@ -38,6 +57,17 @@
             <span>{{ copiedNodeId() === node.id ? 'Copied!' : 'Copy for Agent' }}</span>
           </button>
         </div>
+
+        @if (selectedNodeHasSubgraph()) {
+          <button
+            type="button"
+            class="task-graph__enter-subgraph"
+            (click)="enterSelectedSubgraph()"
+          >
+            <mat-icon>account_tree</mat-icon>
+            <span>Enter subgraph</span>
+          </button>
+        }
 
         <dl class="task-graph__node-meta">
           @if (node.type) {
