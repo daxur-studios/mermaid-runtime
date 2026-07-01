@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "mermaid-runtime": {
+      "projectType": "library",
+      "root": "projects/mermaid-runtime",
+      "sourceRoot": "projects/mermaid-runtime/src",
+      "prefix": "mr",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "options": {
+            "project": "projects/mermaid-runtime/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/mermaid-runtime/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/mermaid-runtime/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        }
+      }
+    }
+  }
+}
