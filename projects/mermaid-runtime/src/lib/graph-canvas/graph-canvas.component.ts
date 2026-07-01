@@ -197,9 +197,11 @@ const DEFAULT_MERMAID_OPTIONS: MermaidAPI.MermaidConfig = {
  * Interactive Mermaid graph canvas — the rendering + interaction core.
  *
  * PURPOSE: Render any `MermaidRuntime.Node[]` (+ transitions) as a status-coloured,
- * clickable flowchart inside a pan/zoom camera, with progress bars, follow, and
- * nested-subgraph navigation. It owns selection/navigation state and exposes it,
- * but renders no inspector or toolbar chrome itself.
+ * clickable flowchart inside a pan/zoom camera, with progress bars, follow,
+ * nested-subgraph navigation, and optional node groups (clusters, not to be
+ * confused with subgraph drill-down — see {@link MermaidRuntime.NodeGroup}). It
+ * owns selection/navigation state and exposes it, but renders no inspector or
+ * toolbar chrome itself.
  *
  * VALUE: The reusable product surface. A host projects its own chrome through the
  * `[overlay]` and `[detail]` slots and binds it to the canvas's exposed signals
@@ -255,6 +257,9 @@ export class GraphCanvasComponent {
    * `transitions`, then to `dependencies` so a dependency-only graph still draws.
    */
   readonly transitions = input<MermaidRuntime.Transition[] | null>(null);
+
+  /** Optional node groups for the root graph (see {@link MermaidRuntime.NodeGroup}). */
+  readonly groups = input<MermaidRuntime.NodeGroup[] | null>(null);
 
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
@@ -367,6 +372,13 @@ export class GraphCanvasComponent {
     return top ? top.graph.transitions ?? null : this.transitions();
   });
 
+  /** Node groups for the level currently shown — the root input, or the top frame. */
+  private readonly activeGroups = computed<MermaidRuntime.NodeGroup[] | null>(() => {
+    const stack = this.graphStack();
+    const top = stack[stack.length - 1];
+    return top ? top.graph.groups ?? null : this.groups();
+  });
+
   /** True while inside a subgraph (the stack is non-empty). */
   protected readonly inSubgraph = computed(() => this.graphStack().length > 0);
 
@@ -395,6 +407,13 @@ export class GraphCanvasComponent {
   });
 
   private readonly aliasMap = computed<GraphAliasMap>(() => this.buildAliasMap(this.activeNodes()));
+
+  /** Mermaid-safe aliases for the active groups, namespaced apart from node aliases. */
+  private readonly groupAliasMap = computed<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    (this.activeGroups() ?? []).forEach((group, index) => map.set(group.id, `tgGrp${index}`));
+    return map;
+  });
 
   protected readonly flowMarkdown = computed(() => `\`\`\`mermaid\n${this.buildGraph()}\n\`\`\``);
 
@@ -574,9 +593,7 @@ export class GraphCanvasComponent {
 
     return [
       'flowchart TD',
-      ...nodes.map((node) =>
-        this.buildNodeDefinitionLine(node, toAlias.get(node.id) ?? node.id, decorations[node.id]),
-      ),
+      ...this.buildNodeDefinitionBlocks(nodes, toAlias, decorations),
       '',
       ...this.buildEdgeLines(aliasFor),
       '',
@@ -586,6 +603,62 @@ export class GraphCanvasComponent {
     ]
       .filter(Boolean)
       .join('\n');
+  }
+
+  /**
+   * Builds node definition lines, wrapping grouped nodes in Mermaid `subgraph`
+   * clusters (namespaced via {@link groupAliasMap} so their ids never collide
+   * with node aliases) so the layout engine treats each group as its own layout
+   * unit — this is what actually compacts a long chain, not just colours it.
+   *
+   * VALUE: A node belongs to at most one group (first group in `groups` order
+   * wins ties); ungrouped nodes render exactly as before. Edges, click lines, and
+   * the clickable class line are untouched — Mermaid resolves those by node alias
+   * regardless of which cluster (if any) contains it.
+   */
+  private buildNodeDefinitionBlocks(
+    nodes: readonly MermaidRuntime.Node[],
+    toAlias: Map<string, string>,
+    decorations: Record<string, MermaidRuntime.NodeDecoration>,
+  ): string[] {
+    const groups = this.activeGroups() ?? [];
+    if (groups.length === 0) {
+      return nodes.map((node) =>
+        this.buildNodeDefinitionLine(node, toAlias.get(node.id) ?? node.id, decorations[node.id]),
+      );
+    }
+
+    const nodeGroupId = new Map<string, string>();
+    for (const group of groups) {
+      for (const nodeId of group.nodeIds) {
+        if (!nodeGroupId.has(nodeId)) nodeGroupId.set(nodeId, group.id);
+      }
+    }
+
+    const groupAliasFor = this.groupAliasMap();
+    const groupBlocks: string[] = [];
+    for (const group of groups) {
+      const memberLines = nodes
+        .filter((node) => nodeGroupId.get(node.id) === group.id)
+        .map((node) =>
+          this.buildNodeDefinitionLine(node, toAlias.get(node.id) ?? node.id, decorations[node.id]),
+        );
+      if (memberLines.length === 0) continue;
+
+      const groupAlias = groupAliasFor.get(group.id) ?? group.id;
+      groupBlocks.push(`  subgraph ${groupAlias}["${this.escapeMermaidString(group.label)}"]`);
+      if (group.direction) groupBlocks.push(`    direction ${group.direction}`);
+      groupBlocks.push(...memberLines);
+      groupBlocks.push('  end');
+    }
+
+    const ungroupedLines = nodes
+      .filter((node) => !nodeGroupId.has(node.id))
+      .map((node) =>
+        this.buildNodeDefinitionLine(node, toAlias.get(node.id) ?? node.id, decorations[node.id]),
+      );
+
+    return [...groupBlocks, ...ungroupedLines];
   }
 
   private buildNodeDefinitionLine(

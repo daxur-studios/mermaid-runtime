@@ -113,6 +113,32 @@ protected onCtx(event: NodeContextMenuEvent): void {
 but only `<mr-graph-canvas>` exposes `contextMenuTarget()`/`closeContextMenu()`
 and the `[overlay]` slot — use the canvas directly for a custom menu.
 
+### Node groups
+
+Cluster related nodes into a bordered, labelled box using Mermaid's native
+layout clustering — useful when a long chain doesn't fit the viewport. This is
+unrelated to the `subgraph`/`subgraphId` drill-down above: a group stays
+visible in the same view (it never replaces it), while drill-down swaps in a
+separate child graph.
+
+```typescript
+const groups: MermaidRuntime.NodeGroup[] = [
+  { id: 'batch-1', label: 'Batch 1', nodeIds: ['a', 'b', 'c', 'd', 'e'], direction: 'LR' },
+  { id: 'batch-2', label: 'Batch 2', nodeIds: ['f', 'g', 'h', 'i', 'j'], direction: 'LR' },
+];
+```
+
+```html
+<mr-task-graph [nodes]="nodes()" [transitions]="transitions()" [groups]="groups" />
+```
+
+A node belongs to at most one group. `direction` sets the group's *internal*
+layout direction independently of the outer flowchart direction — e.g. an
+overall `TD` flow where each group flows `LR` internally turns one long column
+into a compact stack of short rows. Omit `direction` to inherit the outer flow.
+`groups` works on `<mr-graph-canvas>` too, and on any nested `subgraph`'s own
+`Graph.groups` for drill-down levels.
+
 ### `GraphCameraComponent` — generic pan/zoom wrapper
 
 Content-agnostic pan/zoom camera. Not Mermaid-specific — use it to wrap any SVG or DOM content.

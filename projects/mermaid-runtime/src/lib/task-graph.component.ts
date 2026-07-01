@@ -64,6 +64,9 @@ export class TaskGraphComponent {
    */
   readonly transitions = input<MermaidRuntime.Transition[] | null>(null);
 
+  /** Optional node groups for the root graph (see {@link MermaidRuntime.NodeGroup}). */
+  readonly groups = input<MermaidRuntime.NodeGroup[] | null>(null);
+
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
 

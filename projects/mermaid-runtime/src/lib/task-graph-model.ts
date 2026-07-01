@@ -199,6 +199,29 @@ export namespace MermaidRuntime {
   }
 
   /**
+   * A named cluster of nodes rendered as a bordered box via Mermaid's native
+   * layout clustering.
+   *
+   * PURPOSE: Let a host visually differentiate related nodes (e.g. every 5th node
+   * of a long chain) and, via `direction`, let the layout engine actually compact
+   * them into rows/columns instead of one long line.
+   *
+   * VALUE: Membership lives here, not on `Node`, so grouping is a pure view
+   * concern — consistent with `NodeDecoration`/`StatusStyleMap`. This is
+   * deliberately unrelated to `Node.subgraph`/`subgraphId` below: a group stays
+   * visible in the same view (it never replaces it), while a node's `subgraph` is
+   * a separate child graph the viewer drills into.
+   */
+  export interface NodeGroup {
+    id: string;
+    label: string;
+    /** Ids of the member nodes, at this graph's level. A node belongs to at most one group. */
+    nodeIds: string[];
+    /** Internal layout direction for this group's members; inherits the outer flow direction when omitted. */
+    direction?: 'TB' | 'BT' | 'LR' | 'RL';
+  }
+
+  /**
    * A self-contained graph: the top-level viewer input and the shape of any
    * nested subgraph.
    *
@@ -210,5 +233,7 @@ export namespace MermaidRuntime {
   export interface Graph {
     nodes: Node[];
     transitions?: Transition[] | null;
+    /** Optional node groups at this graph's level (see {@link NodeGroup}). */
+    groups?: NodeGroup[] | null;
   }
 }

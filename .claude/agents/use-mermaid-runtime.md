@@ -25,6 +25,9 @@ import {
   SubgraphNavEvent,           // payload emitted on subgraph enter/leave
   NodeContextMenuEvent,       // payload emitted on a node right-click
 } from '@daxur-studios/mermaid-runtime';
+
+// MermaidRuntime.NodeGroup — node-cluster shape — lives on the MermaidRuntime
+// namespace, not a top-level export (see "Node groups" below).
 ```
 
 ## Drop-in viewer
@@ -49,6 +52,7 @@ imports: [TaskGraphComponent]
   [subgraphResolver]="subgraphResolver()"
   [path]="graphPath()"
   [followExecution]="true"
+  [groups]="groups()"
   (nodeSelected)="onNodeSelected($event)"
   (subgraphEntered)="onSubgraphEntered($event)"
   (subgraphLeft)="onSubgraphLeft($event)"
@@ -207,6 +211,30 @@ whether your menu is currently open.
 `contextMenuTarget()`/`closeContextMenu()` and the `[overlay]` slot needed to
 place a menu — use `<mr-graph-canvas>` directly for this.
 
+## Node groups
+
+Cluster related nodes into a bordered, labelled box via Mermaid's native
+`subgraph` layout clustering — not to be confused with `Node.subgraph`/
+`subgraphId` drill-down above. A group stays visible in the same view (nodes
+never leave it); drill-down swaps in a separate child graph entirely.
+
+```typescript
+protected readonly groups = signal<MermaidRuntime.NodeGroup[]>([
+  { id: 'batch-1', label: 'Batch 1', nodeIds: ['a', 'b', 'c', 'd', 'e'], direction: 'LR' },
+  { id: 'batch-2', label: 'Batch 2', nodeIds: ['f', 'g', 'h', 'i', 'j'], direction: 'LR' },
+]);
+```
+
+Bind `[groups]="groups()"` on `<mr-task-graph>` or `<mr-graph-canvas>`. A node
+belongs to at most one group (first group listed wins if `nodeIds` overlap).
+`direction` sets the group's *internal* layout direction independent of the
+outer flowchart direction — this is what actually compacts a long chain (e.g.
+an overall `TD` flow with each group flowing `LR` internally turns one long
+column into a stack of short rows), not just a colour/border overlay. Omit
+`direction` to inherit the outer flow. For a nested subgraph level, set
+`groups` directly on that level's `MermaidRuntime.Graph` object instead of the
+component input.
+
 ## Common mistakes
 
 - **Selectors are `mr-*`**, not `app-*` (e.g. `mr-task-graph`, `mr-graph-canvas`, `mr-graph-inspector`).
@@ -214,5 +242,6 @@ place a menu — use `<mr-graph-canvas>` directly for this.
 - **Do not import from sub-paths** like `@daxur-studios/mermaid-runtime/graph-canvas` — everything is at the package root.
 - **`transitions` vs `dependencies`**: prefer `transitions` (explicit directed edges). `dependencies` is a fallback (reversed direction: `dependencies: ['a', 'b']` on node C draws A→C and B→C).
 - **`subgraph` vs `subgraphResolver`**: use inline `subgraph` for self-contained nested data; use `subgraphResolver` when the host resolves graphs lazily (e.g. by `subgraphId`).
+- **`groups` vs `Node.subgraph`**: a group (`NodeGroup`) is a visual cluster that stays in the same view; `Node.subgraph`/`subgraphId` is drill-down that swaps in a different view. They're unrelated despite Mermaid using the keyword `subgraph` for clustering under the hood.
 - **`runId`**: pass it to `<mr-task-graph>` (or the inspector) so the ref loader can build its HTTP route. Without it, ref previews fail with "No task run id".
 - **Status updates do not re-render Mermaid** — the canvas applies status colours as DOM classes on the existing SVG. Only structural changes (new nodes, new edges) trigger a Mermaid re-render.
