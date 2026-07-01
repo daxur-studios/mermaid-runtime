@@ -190,6 +190,30 @@ const DEFAULT_MERMAID_OPTIONS: MermaidAPI.MermaidConfig = {
  * (e.g. `selectedNode`, `selectedNodeHasSubgraph`) via a template ref — so every
  * project arranges its own layout while the interaction behaviour is shared.
  */
+/**
+ * Maximum time difference (ms) allowed between parallel execution parent node completions.
+ *
+ * VALUE: Ensures concurrent parent nodes in a parallel AND-join are both treated as triggering
+ * the child node, while stale parents from older loop iterations are correctly filtered out.
+ */
+const PARALLEL_JOIN_THRESHOLD_MS = 3000;
+
+/**
+ * Duration (ms) that the node border pulse class remains active.
+ *
+ * VALUE: Matches the CSS transition duration so the class is removed exactly as the
+ * visual animation completes.
+ */
+const NODE_PULSE_DURATION_MS = 500;
+
+/**
+ * Duration (ms) that the connection edge marching-ants pulse class remains active.
+ *
+ * VALUE: Matches the transition and animation timings so the edge settles into its
+ * solid color state exactly as the pulse completes.
+ */
+const EDGE_PULSE_DURATION_MS = 1000;
+
 @Component({
   selector: 'app-graph-canvas',
   templateUrl: './graph-canvas.component.html',
@@ -415,11 +439,14 @@ export class GraphCanvasComponent {
   /** Last seen `followExecution` value, to detect off→on (which resumes follow). */
   private lastFollowOn = false;
 
-  /** A follow re-frame is already queued for the next frame (coalesces bursts). */
-  private toggleState = false; // dummy or spacer if needed, let's keep it clean
   private followFramePending = false;
 
-  /** Track previous status of each node to detect transitions for pulse animations. */
+  /**
+   * Track previous status of each node.
+   *
+   * VALUE: Detects real-time state transitions so the component only pulses nodes
+   * that changed state while the user is actively watching.
+   */
   private readonly previousStatuses = new Map<string, string>();
 
   constructor() {
@@ -825,21 +852,30 @@ export class GraphCanvasComponent {
       }
       this.previousStatuses.set(node.id, node.status);
     }
-
     // Keep connection lines styled based on target node states
     this.applyEdgeStatusClasses();
   }
 
-  /** Temporarily thickens the node border outline using a generic animation */
+  /**
+   * Temporarily thickens the node border outline.
+   *
+   * VALUE: Provides immediate visual feedback to the human operator that a specific
+   * node has transitioned status (e.g. finished running or encountered an error).
+   */
   private triggerNodePulse(nodeId: string): void {
     const element = this.findNodeElement(nodeId);
     if (!element) return;
 
     element.classList.add('pulse-active');
-    setTimeout(() => element.classList.remove('pulse-active'), 500);
+    setTimeout(() => element.classList.remove('pulse-active'), NODE_PULSE_DURATION_MS);
   }
 
-  /** Temporarily makes incoming connections dashed and moving */
+  /**
+   * Temporarily animates incoming connections as dashed marching ants.
+   *
+   * VALUE: Visually represents active flow transitions, making it clear to the operator
+   * which path triggered the newly active node.
+   */
   private triggerIncomingEdgesPulse(nodeId: string, statusClass: string): void {
     const { toAlias } = this.aliasMap();
     const pulseClass = `edge-pulse--${statusClass}`;
@@ -849,9 +885,7 @@ export class GraphCanvasComponent {
     for (const edge of this.resolveEdges()) {
       if (edge.to !== nodeId) continue;
 
-      const parentNode = nodeMap.get(edge.from);
-      // Only pulse incoming connection lines if the parent node was completed
-      if (!parentNode || parentNode.status !== 'complete') continue;
+      if (!this.isEdgeActive(edge, nodeMap)) continue;
 
       const parentAlias = toAlias.get(edge.from);
       const childAlias = toAlias.get(edge.to);
@@ -861,11 +895,16 @@ export class GraphCanvasComponent {
       if (!edgeEl) continue;
 
       edgeEl.classList.add(pulseClass);
-      setTimeout(() => edgeEl.classList.remove(pulseClass), 1000);
+      setTimeout(() => edgeEl.classList.remove(pulseClass), EDGE_PULSE_DURATION_MS);
     }
   }
 
-  /** Applies status class modifiers to connection lines leading to nodes */
+  /**
+   * Applies status class modifiers to connection lines leading to nodes.
+   *
+   * VALUE: Styles traversed connection lines based on target node outcomes (e.g., solid
+   * green for complete, solid red for failed), highlighting the execution path.
+   */
   private applyEdgeStatusClasses(): void {
     const { toAlias } = this.aliasMap();
     const host = this.hostElement.nativeElement;
@@ -892,12 +931,10 @@ export class GraphCanvasComponent {
       const childAlias = toAlias.get(edge.to);
       if (!parentAlias || !childAlias) continue;
 
-      const parentNode = nodeMap.get(edge.from);
       const childNode = nodeMap.get(edge.to);
-      if (!parentNode || !childNode) continue;
+      if (!childNode) continue;
 
-      // Only color the connection line if the parent node has successfully completed
-      if (parentNode.status === 'complete') {
+      if (this.isEdgeActive(edge, nodeMap)) {
         const edgeEl = this.findEdgeElement(parentAlias, childAlias);
         if (!edgeEl) continue;
 
@@ -909,7 +946,68 @@ export class GraphCanvasComponent {
     }
   }
 
-  /** Find a rendered Mermaid edge container in the DOM by its start and end node aliases */
+  /**
+   * Determine if a connection line should be visually colored/animated based on execution.
+   *
+   * VALUE: Prevents loop paths from highlighting prematurely, handles failed node recovery pathing,
+   * and preserves parallel join animations using endedAt/startedAt timestamps.
+   */
+  private isEdgeActive(
+    edge: GraphEdge,
+    nodeMap: Map<string, MermaidRuntime.Node>
+  ): boolean {
+    const parentNode = nodeMap.get(edge.from);
+    const childNode = nodeMap.get(edge.to);
+    if (!parentNode || !childNode) return false;
+
+    // 1. Parent must have executed (not undone/skipped/running)
+    const isParentExecuted =
+      parentNode.status !== 'undone' &&
+      parentNode.status !== 'skipped' &&
+      parentNode.status !== 'running';
+    if (!isParentExecuted) return false;
+
+    // 2. Child must be active/completed (not undone/skipped)
+    if (childNode.status === 'undone' || childNode.status === 'skipped') return false;
+
+    // 3. Resolve multi-parent connections using execution timestamps
+    if (childNode.startedAt) {
+      const childStart = Date.parse(childNode.startedAt);
+      if (!isNaN(childStart)) {
+        const candidates: { id: string; endTime: number }[] = [];
+        const edges = this.resolveEdges();
+        for (const e of edges) {
+          if (e.to !== childNode.id) continue;
+          const p = nodeMap.get(e.from);
+          if (p && p.endedAt) {
+            const pEnd = Date.parse(p.endedAt);
+            if (!isNaN(pEnd) && pEnd <= childStart) {
+              candidates.push({ id: p.id, endTime: pEnd });
+            }
+          }
+        }
+
+        if (candidates.length > 1) {
+          const maxEndTime = Math.max(...candidates.map((c) => c.endTime));
+          const parentCandidate = candidates.find((c) => c.id === parentNode.id);
+          if (parentCandidate) {
+            // Active if it is the closest parent OR completed within parallel join threshold
+            const diff = maxEndTime - parentCandidate.endTime;
+            return diff <= PARALLEL_JOIN_THRESHOLD_MS;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Find a rendered Mermaid edge path element in the DOM.
+   *
+   * VALUE: Direct query targeting of path elements via data-id and id attributes, bypassing
+   * Mermaid's auto-generated unique ID suffixes.
+   */
   private findEdgeElement(parentAlias: string, childAlias: string): HTMLElement | null {
     const host = this.hostElement.nativeElement;
     return (
