@@ -1,4 +1,4 @@
-<app-graph-canvas
+<mr-graph-canvas
   #canvas
   [nodes]="nodes()"
   [transitions]="transitions()"
@@ -19,7 +19,7 @@
   (graphPathChange)="graphPathChange.emit($event)"
 >
   @if (showInspector()) {
-    <app-graph-inspector
+    <mr-graph-inspector
       detail
       [node]="canvas.selectedNode()"
       [runId]="runId()"
@@ -27,4 +27,4 @@
       (enterSubgraph)="canvas.enterSelectedSubgraph()"
     />
   }
-</app-graph-canvas>
+</mr-graph-canvas>

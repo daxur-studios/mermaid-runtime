@@ -102,10 +102,10 @@ function isTextSelectionTarget(target: Element): boolean {
  * the graph-aware logic (node → bounding box, follow rules) lives in the parent.
  */
 @Component({
-  selector: 'app-graph-camera',
+  selector: 'mr-graph-camera',
   templateUrl: './graph-camera.component.html',
   styleUrl: './graph-camera.component.scss',
-  host: { class: 'app-graph-camera' },
+  host: { class: 'mr-graph-camera' },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphCameraComponent {

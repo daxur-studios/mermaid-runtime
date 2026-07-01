@@ -215,10 +215,10 @@ const NODE_PULSE_DURATION_MS = 500;
 const EDGE_PULSE_DURATION_MS = 1000;
 
 @Component({
-  selector: 'app-graph-canvas',
+  selector: 'mr-graph-canvas',
   templateUrl: './graph-canvas.component.html',
   styleUrl: './graph-canvas.component.scss',
-  host: { class: 'app-graph-canvas' },
+  host: { class: 'mr-graph-canvas' },
   imports: [CommonModule, MarkdownModule, GraphCameraComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

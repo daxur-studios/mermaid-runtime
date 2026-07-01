@@ -38,10 +38,10 @@ export type { SubgraphNavEvent };
  * `selectedNode` via a template ref, so selection state lives in one place.
  */
 @Component({
-  selector: 'app-task-graph',
+  selector: 'mr-task-graph',
   templateUrl: './task-graph.component.html',
   styleUrl: './task-graph.component.scss',
-  host: { class: 'app-task-graph' },
+  host: { class: 'mr-task-graph' },
   imports: [GraphCanvasComponent, GraphInspectorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

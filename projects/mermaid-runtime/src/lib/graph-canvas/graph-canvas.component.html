@@ -1,13 +1,13 @@
 <div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()">
   <div class="graph-canvas__viewport">
-    <app-graph-camera class="graph-canvas__camera" (userInteract)="onUserInteract()">
+    <mr-graph-camera class="graph-canvas__camera" (userInteract)="onUserInteract()">
       <markdown
         [data]="flowMarkdown()"
         mermaid
         [mermaidOptions]="mermaidOptions"
         class="graph-canvas__mermaid"
       ></markdown>
-    </app-graph-camera>
+    </mr-graph-camera>
 
     @if (showRecenterChip()) {
       <button type="button" class="graph-canvas__recenter" (click)="resumeFollow()">

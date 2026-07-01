@@ -71,10 +71,10 @@ const TASK_RUN_REF_JSON_INDENT_SPACES = 2;
  * stays a pluggable token, not a daemon import.
  */
 @Component({
-  selector: 'app-graph-inspector',
+  selector: 'mr-graph-inspector',
   templateUrl: './graph-inspector.component.html',
   styleUrl: './graph-inspector.component.scss',
-  host: { class: 'app-graph-inspector' },
+  host: { class: 'mr-graph-inspector' },
   imports: [CommonModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
