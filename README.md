@@ -139,6 +139,14 @@ into a compact stack of short rows. Omit `direction` to inherit the outer flow.
 `groups` works on `<mr-graph-canvas>` too, and on any nested `subgraph`'s own
 `Graph.groups` for drill-down levels.
 
+> **Caveat:** only set `direction` on a group whose members have no edges
+> to/from nodes outside the group. Mermaid/dagre's routing for edges crossing
+> a cluster boundary is unreliable once that cluster's direction differs from
+> its parent's — the edge can visually clip to the cluster's border instead of
+> the actual node. If a group's chain connects to the rest of the graph
+> (the common case), omit `direction`; the group still renders as a labelled
+> box, just without the extra layout compaction.
+
 ### `GraphCameraComponent` — generic pan/zoom wrapper
 
 Content-agnostic pan/zoom camera. Not Mermaid-specific — use it to wrap any SVG or DOM content.

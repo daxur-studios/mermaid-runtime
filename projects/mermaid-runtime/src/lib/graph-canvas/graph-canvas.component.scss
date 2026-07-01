@@ -177,9 +177,11 @@
 
 // Node groups (clusters) — a bordered box around related nodes, distinct from
 // the dashed has-subgraph outline above (a group stays visible in the same
-// view; it never replaces it).
+// view; it never replaces it). Translucent fill so it reads as a highlight,
+// not a solid card sitting behind the nodes.
 :host ::ng-deep .mermaid .cluster rect {
   fill: var(--mat-sys-surface-container-high);
+  fill-opacity: 0.35;
   stroke: var(--mat-sys-outline-variant);
   stroke-width: 1.5px;
   rx: 8px;

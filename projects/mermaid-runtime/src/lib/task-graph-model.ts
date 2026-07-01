@@ -217,7 +217,18 @@ export namespace MermaidRuntime {
     label: string;
     /** Ids of the member nodes, at this graph's level. A node belongs to at most one group. */
     nodeIds: string[];
-    /** Internal layout direction for this group's members; inherits the outer flow direction when omitted. */
+    /**
+     * Internal layout direction for this group's members; inherits the outer
+     * flow direction when omitted.
+     *
+     * CAVEAT: Mermaid/dagre's edge routing for edges that cross into or out of
+     * a cluster is unreliable once the cluster's `direction` differs from its
+     * parent's — the edge can visually clip to the cluster's border instead of
+     * reaching the actual node. Only set `direction` on a group whose members
+     * have no edges to/from nodes outside the group; otherwise omit it (the
+     * group still renders as a labelled box, just without the layout
+     * compaction a differing direction would otherwise give it).
+     */
     direction?: 'TB' | 'BT' | 'LR' | 'RL';
   }
 

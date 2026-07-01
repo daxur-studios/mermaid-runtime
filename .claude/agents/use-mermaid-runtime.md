@@ -235,6 +235,14 @@ column into a stack of short rows), not just a colour/border overlay. Omit
 `groups` directly on that level's `MermaidRuntime.Graph` object instead of the
 component input.
 
+**Caveat — only set `direction` on a self-contained group** (no edges to/from
+nodes outside it). Mermaid/dagre's edge routing across a cluster boundary is
+unreliable once that cluster's direction differs from its parent's: the edge
+can visually clip to the cluster border instead of reaching the actual node.
+If the group's nodes connect to the rest of the graph (the common case, e.g. a
+chain split into groups), omit `direction` — the group still renders as a
+labelled box, just without the extra compaction.
+
 ## Common mistakes
 
 - **Selectors are `mr-*`**, not `app-*` (e.g. `mr-task-graph`, `mr-graph-canvas`, `mr-graph-inspector`).
