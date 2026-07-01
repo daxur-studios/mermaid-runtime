@@ -1,5 +1,5 @@
 <div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()">
-  <div class="graph-canvas__viewport">
+  <div class="graph-canvas__viewport" #viewport>
     <mr-graph-camera class="graph-canvas__camera" (userInteract)="onUserInteract()">
       <markdown
         [data]="flowMarkdown()"

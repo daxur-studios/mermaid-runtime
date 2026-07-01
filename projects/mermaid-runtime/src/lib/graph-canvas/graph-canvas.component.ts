@@ -68,6 +68,22 @@ export interface SubgraphNavEvent {
   label: string | null;
 }
 
+/**
+ * Payload emitted when the user right-clicks a node.
+ *
+ * Value: Carries the node id plus a position already relative to the canvas
+ * viewport, so a host can position its own projected context-menu component
+ * with a plain `[style.left.px]`/`[style.top.px]` binding — no coordinate math.
+ */
+export interface NodeContextMenuEvent {
+  /** Real id of the right-clicked node. */
+  nodeId: string;
+  /** Horizontal offset (px) from the viewport's left edge. */
+  x: number;
+  /** Vertical offset (px) from the viewport's top edge. */
+  y: number;
+}
+
 /** Query parameter used to encode the real node id in Mermaid click hrefs. */
 const NODE_HREF_PARAM = 'node';
 
@@ -187,8 +203,11 @@ const DEFAULT_MERMAID_OPTIONS: MermaidAPI.MermaidConfig = {
  *
  * VALUE: The reusable product surface. A host projects its own chrome through the
  * `[overlay]` and `[detail]` slots and binds it to the canvas's exposed signals
- * (e.g. `selectedNode`, `selectedNodeHasSubgraph`) via a template ref — so every
- * project arranges its own layout while the interaction behaviour is shared.
+ * (e.g. `selectedNode`, `selectedNodeHasSubgraph`, `contextMenuTarget`) via a
+ * template ref — so every project arranges its own layout while the interaction
+ * behaviour is shared. A right-click on a node follows the same pattern: the
+ * canvas resolves and exposes the target, the host supplies and positions its own
+ * standalone context-menu component into `[overlay]`.
  */
 /**
  * Maximum time difference (ms) allowed between parallel execution parent node completions.
@@ -226,6 +245,7 @@ export class GraphCanvasComponent {
   private readonly hostElement = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
+  private readonly viewportRef = viewChild.required<ElementRef<HTMLElement>>('viewport');
 
   /** Execution nodes to render. The host owns their lifecycle and status. */
   readonly nodes = input.required<MermaidRuntime.Node[]>();
@@ -304,6 +324,9 @@ export class GraphCanvasComponent {
 
   /** Emits the real node id when a node is clicked. */
   readonly nodeSelected = output<string>();
+
+  /** Emits the target node id and viewport-relative position on a node right-click. */
+  readonly nodeContextMenu = output<NodeContextMenuEvent>();
 
   /** Emits when the user drills into a node's subgraph. */
   readonly subgraphEntered = output<SubgraphNavEvent>();
@@ -400,6 +423,17 @@ export class GraphCanvasComponent {
     return !!node && !!this.resolveSubgraph(node);
   });
 
+  private readonly internalContextMenuTarget = signal<MermaidRuntime.Node | null>(null);
+
+  /**
+   * The node last right-clicked, or null once dismissed.
+   *
+   * VALUE: Lets a host bind its projected context-menu component straight to the
+   * target node via the `#canvas` template ref (`canvas.contextMenuTarget()`),
+   * the same idiom used for `selectedNode` — no separate lookup needed.
+   */
+  readonly contextMenuTarget = this.internalContextMenuTarget.asReadonly();
+
   /** Ids of the currently running nodes, joined — drives follow re-framing. */
   private readonly runningKey = computed(() =>
     this.activeNodes()
@@ -453,13 +487,16 @@ export class GraphCanvasComponent {
     const host = this.hostElement.nativeElement;
     const clickListener = (event: MouseEvent) => this.handleChartClick(event);
     const dblClickListener = (event: MouseEvent) => this.handleChartDblClick(event);
+    const contextMenuListener = (event: MouseEvent) => this.handleChartContextMenu(event);
     const chartObserver = new MutationObserver(() => this.onChartMutation());
     host.addEventListener('click', clickListener, true);
     host.addEventListener('dblclick', dblClickListener, true);
+    host.addEventListener('contextmenu', contextMenuListener, true);
     chartObserver.observe(host, { childList: true, subtree: true });
     this.destroyRef.onDestroy(() => {
       host.removeEventListener('click', clickListener, true);
       host.removeEventListener('dblclick', dblClickListener, true);
+      host.removeEventListener('contextmenu', contextMenuListener, true);
       chartObserver.disconnect();
     });
 
@@ -657,6 +694,8 @@ export class GraphCanvasComponent {
   /** Called by the camera when the user manually pans/zooms — pauses follow. */
   protected onUserInteract(): void {
     if (this.followExecution()) this.followPaused.set(true);
+    // A pan/zoom moves the node the menu's position was measured for.
+    this.internalContextMenuTarget.set(null);
   }
 
   /** Re-center chip handler: resume follow and move to the active node. */
@@ -751,6 +790,7 @@ export class GraphCanvasComponent {
   }
 
   private handleChartClick(event: MouseEvent): void {
+    this.internalContextMenuTarget.set(null);
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
@@ -778,6 +818,32 @@ export class GraphCanvasComponent {
     event.preventDefault();
     event.stopPropagation();
     this.enterSubgraph(node);
+  }
+
+  /** Right-click a node to resolve it and emit {@link nodeContextMenu}, suppressing the browser menu. */
+  private handleChartContextMenu(event: MouseEvent): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const linkElement = target.closest('a');
+    const nodeId = linkElement ? this.readNodeIdFromLink(linkElement) : null;
+    if (!nodeId) return;
+    const node = this.activeNodes().find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.internalContextMenuTarget.set(node);
+    const viewportRect = this.viewportRef().nativeElement.getBoundingClientRect();
+    this.nodeContextMenu.emit({
+      nodeId,
+      x: event.clientX - viewportRect.left,
+      y: event.clientY - viewportRect.top,
+    });
+  }
+
+  /** Dismiss the context-menu target. A host calls this from its menu's own close/action handler. */
+  closeContextMenu(): void {
+    this.internalContextMenuTarget.set(null);
   }
 
   private readNodeIdFromLink(linkElement: Element): string | null {
@@ -1319,6 +1385,7 @@ export class GraphCanvasComponent {
    */
   private onNavigated(stack: GraphFrame[], direction: 'enter' | 'leave'): void {
     this.internalSelectedNodeId.set(null);
+    this.internalContextMenuTarget.set(null);
     this.hasFitInitialView = false;
     const top = stack[stack.length - 1] ?? null;
     const path = stack.map((frame) => frame.nodeId);

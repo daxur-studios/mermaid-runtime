@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import { MermaidRuntime } from './task-graph-model';
 import {
   GraphCanvasComponent,
+  type NodeContextMenuEvent,
   type SubgraphNavEvent,
 } from './graph-canvas/graph-canvas.component';
 import { GraphInspectorComponent } from './graph-inspector/graph-inspector.component';
@@ -23,6 +24,14 @@ export type TaskGraphNodeDecoration = MermaidRuntime.NodeDecoration;
  * wired to it before the composition split.
  */
 export type { SubgraphNavEvent };
+
+/**
+ * Re-export of the canvas's node context-menu payload.
+ *
+ * Value: Keeps `NodeContextMenuEvent` importable from this entry point so hosts
+ * using `<mr-task-graph>` don't need to reach into the canvas sub-path.
+ */
+export type { NodeContextMenuEvent };
 
 /**
  * Default composition of the graph canvas + projected inspector.
@@ -113,6 +122,9 @@ export class TaskGraphComponent {
 
   /** Emits the real node id when a node is clicked. */
   readonly nodeSelected = output<string>();
+
+  /** Emits the target node id and viewport-relative position on a node right-click. */
+  readonly nodeContextMenu = output<NodeContextMenuEvent>();
 
   /** Emits when the user drills into a node's subgraph. */
   readonly subgraphEntered = output<SubgraphNavEvent>();
