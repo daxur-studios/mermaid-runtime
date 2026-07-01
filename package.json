@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "build": "ng build mermaid-runtime"
+    "build": "ng build mermaid-runtime",
+    "pack": "ng build mermaid-runtime && cd dist/mermaid-runtime && npm pack",
+    "watch": "ng build mermaid-runtime --watch --configuration development"
   },
   "private": true,
   "dependencies": {

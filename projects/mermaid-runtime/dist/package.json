@@ -1,0 +1,36 @@
+{
+  "name": "@daxur-studios/mermaid-runtime",
+  "version": "0.1.0",
+  "peerDependencies": {
+    "@angular/common": "^20.3.0",
+    "@angular/core": "^20.3.0",
+    "@angular/cdk": "^20.0.0",
+    "@angular/material": "^20.0.0",
+    "mermaid": "^11.16.0",
+    "ngx-markdown": "^20.1.0",
+    "rxjs": "~7.8.0"
+  },
+  "peerDependenciesMeta": {
+    "ngx-markdown": {
+      "optional": true
+    }
+  },
+  "module": "fesm2022/daxur-studios-mermaid-runtime.mjs",
+  "typings": "index.d.ts",
+  "exports": {
+    "./package.json": {
+      "default": "./package.json"
+    },
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./fesm2022/daxur-studios-mermaid-runtime.mjs"
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "scripts": {
+    "prepublishOnly": "node --eval \"console.error('ERROR: Trying to publish a package that has been compiled in full compilation mode. This is not allowed.\\nPlease delete and rebuild the package with partial compilation mode, before attempting to publish.\\n')\" && exit 1"
+  }
+}

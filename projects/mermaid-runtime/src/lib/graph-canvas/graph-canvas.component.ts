@@ -16,7 +16,7 @@ import { CommonModule } from '@angular/common';
 import { MarkdownModule, MermaidAPI } from 'ngx-markdown';
 
 import { MermaidRuntime } from '../task-graph-model';
-import { GraphCameraComponent } from '../../graph-camera/graph-camera.component';
+import { GraphCameraComponent } from '../graph-camera/graph-camera.component';
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface GraphEdge {
