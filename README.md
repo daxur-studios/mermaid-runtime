@@ -41,7 +41,7 @@ import { TaskGraphComponent, MermaidRuntime } from '@daxur-studios/mermaid-runti
 @Component({
   imports: [TaskGraphComponent],
   template: `
-    <app-task-graph
+    <mr-task-graph
       [nodes]="nodes()"
       [transitions]="transitions()"
       [showInspector]="true"
@@ -66,21 +66,52 @@ export class MyPage {
 
 ### `GraphCanvasComponent` — canvas only
 
-Use when you want to compose your own inspector or toolbar around the canvas.
+Use when you want to compose your own inspector, toolbar, or context menu around
+the canvas. Chrome is projected via two attribute-selector slots — `[overlay]`
+for viewport-anchored controls, `[detail]` for a side panel — bound to the
+canvas's exposed signals through a template ref (`#canvas`):
+
+```html
+<mr-graph-canvas #canvas [nodes]="nodes()" [followExecution]="true">
+  <div overlay>
+    <!-- breadcrumb / toolbar chrome here -->
+  </div>
+  <my-custom-inspector detail [node]="canvas.selectedNode()" />
+</mr-graph-canvas>
+```
+
+### Custom context menu
+
+A right-click on a node emits `(nodeContextMenu)` — `{ nodeId, x, y }`, with `x`/`y`
+already relative to the canvas viewport — and the canvas exposes the resolved
+node as `contextMenuTarget()`. The library ships no menu UI; project your own
+standalone component into `[overlay]`, positioned with the emitted coordinates:
+
+```html
+<mr-graph-canvas #canvas [nodes]="nodes()" (nodeContextMenu)="onCtx($event)">
+  @if (canvas.contextMenuTarget(); as node) {
+    <my-context-menu
+      overlay
+      [node]="node"
+      [style.left.px]="ctxPos().x"
+      [style.top.px]="ctxPos().y"
+      (closed)="canvas.closeContextMenu()"
+    />
+  }
+</mr-graph-canvas>
+```
 
 ```typescript
-import { GraphCanvasComponent } from '@daxur-studios/mermaid-runtime';
+protected readonly ctxPos = signal({ x: 0, y: 0 });
 
-// template:
-// <app-graph-canvas #canvas [nodes]="nodes()" [followExecution]="true">
-//   <ng-template appGraphOverlay>
-//     <!-- breadcrumb / toolbar chrome here -->
-//   </ng-template>
-//   <ng-template appGraphDetail>
-//     <my-custom-inspector [node]="canvas.selectedNode()" />
-//   </ng-template>
-// </app-graph-canvas>
+protected onCtx(event: NodeContextMenuEvent): void {
+  this.ctxPos.set({ x: event.x, y: event.y });
+}
 ```
+
+`<mr-task-graph>` re-emits the same `(nodeContextMenu)` event for convenience,
+but only `<mr-graph-canvas>` exposes `contextMenuTarget()`/`closeContextMenu()`
+and the `[overlay]` slot — use the canvas directly for a custom menu.
 
 ### `GraphCameraComponent` — generic pan/zoom wrapper
 
@@ -152,7 +183,7 @@ window.addEventListener('popstate', (event) => {
 });
 ```
 
-Then bind `[path]="graphPath()"` on `<app-task-graph>` so the viewer reconciles to the restored depth.
+Then bind `[path]="graphPath()"` on `<mr-task-graph>` so the viewer reconciles to the restored depth.
 
 ## Inspector ref loader
 
@@ -187,19 +218,28 @@ npm run build  # runs: ng build mermaid-runtime
 
 Output lands in `dist/mermaid-runtime/`.
 
-## Local development (file: link)
+## Local development (build → pack → deploy)
 
-From a consuming project:
+Consumers install this library from a packed tgz (`file:./daxur-studios-mermaid-runtime-<version>.tgz`
+in their `package.json`), not a `file:` link to `dist/`, so a version-less tarball
+change still needs its package-lock integrity hash updated.
+
+`scripts/deploy.ps1` does the whole cycle — build, pack, copy the tgz into the
+consumer, patch its lockfile integrity, reinstall, and verify the built package
+contains the expected `mr-*` selectors:
 
 ```bash
-# in mermaid-runtime:
-npm run build
-
-# in the consuming project:
-npm install ../../path/to/mermaid-runtime/dist/mermaid-runtime
-# or pin in package.json:
-# "@daxur-studios/mermaid-runtime": "file:../../mermaid-runtime/dist/mermaid-runtime"
+npm run deploy                       # uses scripts/deploy.local.json if present
+npm run deploy -- -ConsumerDir <path>  # or pass it explicitly
 ```
+
+Create `scripts/deploy.local.json` (gitignored) for local convenience:
+
+```json
+{ "consumerDir": "D:\\path\\to\\your\\consumer-app" }
+```
+
+See `scripts/deploy.local.json.example` for the template.
 
 ## Repository
 
