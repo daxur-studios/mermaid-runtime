@@ -1,0 +1,26 @@
+<div
+  #viewport
+  class="graph-camera__viewport"
+  [class.graph-camera__viewport--panning]="isPanning()"
+  (wheel)="onWheel($event)"
+  (pointerdown)="onPointerDown($event)"
+  (pointermove)="onPointerMove($event)"
+  (pointerup)="onPointerUp($event)"
+  (pointercancel)="onPointerUp($event)"
+>
+  <div
+    #scene
+    class="graph-camera__scene"
+    [class.graph-camera__scene--interacting]="isInteracting()"
+    [style.transform]="sceneTransform()"
+  >
+    <ng-content />
+  </div>
+</div>
+
+<div class="graph-camera__controls">
+  <button type="button" class="graph-camera__btn" title="Zoom in" (click)="zoomIn()">+</button>
+  <button type="button" class="graph-camera__btn" title="Zoom out" (click)="zoomOut()">&minus;</button>
+  <button type="button" class="graph-camera__btn" title="Fit all" (click)="fitAll()">Fit</button>
+  <button type="button" class="graph-camera__btn" title="Reset view" (click)="reset()">Reset</button>
+</div>
