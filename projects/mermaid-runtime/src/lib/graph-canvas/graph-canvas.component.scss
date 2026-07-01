@@ -245,7 +245,7 @@
 
 // ── Node Label Layout & Text Wrapping ──────────────────────────────
 
-:host ::ng-deep .mermaid .node > foreignObject > .nodeLabel {
+:host ::ng-deep .mermaid .node .nodeLabel {
   display: flex;
   align-items: center;
   justify-content: space-between;

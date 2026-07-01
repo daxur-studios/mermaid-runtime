@@ -115,7 +115,8 @@ export class TaskGraphComponent {
    */
   readonly showSubgraphPreview = input<boolean>(true);
 
-
+  /** Whether to render the corner minimap overlay. */
+  readonly showMinimap = input<boolean>(true);
 
   /**
    * Resolves a node's child graph. When omitted, the node's inline

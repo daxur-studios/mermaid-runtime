@@ -23,17 +23,7 @@ const MINIMAP_NODE_MIN_SIZE_PX = 6;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MinimapComponent {
-  constructor() {
-    console.log('[MinimapComponent] Instantiated');
-    effect(() => {
-      console.log('[MinimapComponent] Inputs - contentRect:', this.contentRect(), 
-                  'viewportRect:', this.viewportRect(), 
-                  'nodesCount:', this.nodes().length);
-    });
-    effect(() => {
-      console.log('[MinimapComponent] Computed viewBox:', this.viewBox());
-    });
-  }
+  constructor() {}
 
   private readonly svgRef = viewChild.required<ElementRef<SVGSVGElement>>('svg');
 

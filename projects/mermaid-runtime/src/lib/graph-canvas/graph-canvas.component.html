@@ -40,12 +40,14 @@
     <!-- Host-supplied viewport overlays (extra controls, minimap, legends). -->
     <ng-content select="[overlay]"></ng-content>
 
-    <mr-minimap
-      [contentRect]="minimapContentRect()"
-      [viewportRect]="minimapViewportRect()"
-      [nodes]="minimapNodes()"
-      (jump)="centerOnPoint($event)"
-    />
+    @if (showMinimap()) {
+      <mr-minimap
+        [contentRect]="minimapContentRect()"
+        [viewportRect]="minimapViewportRect()"
+        [nodes]="minimapNodes()"
+        (jump)="centerOnPoint($event)"
+      />
+    }
   </div>
 
   <!-- Host-supplied side detail (inspector/sidebar); reserved only when showDetail. -->
