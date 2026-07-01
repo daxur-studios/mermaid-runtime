@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, viewChild } from '@angular/core';
 
 import { MermaidRuntime } from './task-graph-model';
 import {
@@ -55,6 +55,18 @@ export type { NodeContextMenuEvent };
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TaskGraphComponent {
+  /**
+   * The inner canvas instance — exposed so a host can reach its
+   * public API via `<mr-task-graph #tg>` and `tg.canvas()`.
+   *
+   * Deliberately optional (not `viewChild.required`): a host's `[overlay]`
+   * content is projected into this component's view, so its bindings can be
+   * evaluated before this component's own `ngAfterViewInit` resolves the
+   * query — a `.required()` read there throws NG0951. Callers must guard
+   * with `?.`.
+   */
+  readonly canvas = viewChild(GraphCanvasComponent);
+
   /** Execution nodes to render. The host owns their lifecycle and status. */
   readonly nodes = input.required<MermaidRuntime.Node[]>();
 
@@ -102,6 +114,8 @@ export class TaskGraphComponent {
    * VALUE: Decorative only; set false to drop the inline subgraph previews.
    */
   readonly showSubgraphPreview = input<boolean>(true);
+
+
 
   /**
    * Resolves a node's child graph. When omitted, the node's inline

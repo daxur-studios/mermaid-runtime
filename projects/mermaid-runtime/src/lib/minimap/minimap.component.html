@@ -1,0 +1,33 @@
+@if (viewBox(); as vb) {
+  <svg
+    #svg
+    class="mr-minimap__svg"
+    [attr.width]="panelWidth"
+    [attr.height]="panelHeight"
+    [attr.viewBox]="vb"
+    preserveAspectRatio="xMidYMid meet"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp($event)"
+    (pointercancel)="onPointerUp($event)"
+  >
+    @for (node of nodeRects(); track node.id) {
+      <rect
+        [attr.class]="'mr-minimap__node mr-minimap__node--' + node.className"
+        [attr.x]="node.x"
+        [attr.y]="node.y"
+        [attr.width]="node.width"
+        [attr.height]="node.height"
+      />
+    }
+    @if (viewportRect(); as vp) {
+      <rect
+        class="mr-minimap__viewport"
+        [attr.x]="vp.x"
+        [attr.y]="vp.y"
+        [attr.width]="vp.width"
+        [attr.height]="vp.height"
+      />
+    }
+  </svg>
+}

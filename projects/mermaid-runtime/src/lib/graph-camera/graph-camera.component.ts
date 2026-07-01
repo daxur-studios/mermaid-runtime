@@ -222,6 +222,41 @@ export class GraphCameraComponent {
   }
 
   /**
+   * Natural (scale-1) bounds of the projected content, in scene coordinates.
+   *
+   * Value: Lets a caller (e.g. a minimap) draw the full extent of the content
+   * without duplicating the measurement `fitAll()` already does internally.
+   */
+  contentRect(): GraphRect | null {
+    return this.measureContentRect();
+  }
+
+  /**
+   * Recenter the viewport on a scene-space point, keeping the current scale.
+   *
+   * Value: Unlike `frameRect()`, this never changes zoom — a minimap click/drag
+   * should move the camera to a spot, not also re-fit the view around it.
+   */
+  centerOn(point: { x: number; y: number }, options?: { animate?: boolean }): void {
+    const viewport = this.viewportRef().nativeElement.getBoundingClientRect();
+    if (viewport.width === 0 || viewport.height === 0) return;
+
+    const scale = this.camera().scale;
+    const target: GraphCameraState = {
+      x: viewport.width / 2 - point.x * scale,
+      y: viewport.height / 2 - point.y * scale,
+      scale,
+    };
+
+    if (options?.animate === false) {
+      this.cancelCameraAnimation();
+      this.camera.set(target);
+    } else {
+      this.animateCameraTo(target);
+    }
+  }
+
+  /**
    * Frame a scene-space rectangle, centering it at a comfortable zoom.
    * `maxScale` lets callers cap zoom-in (e.g. a single-node floor for follow).
    */

@@ -1,0 +1,45 @@
+:host {
+  position: absolute;
+  right: 12px;
+  bottom: 56px;
+  z-index: 2;
+  display: block;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--mat-sys-surface-container);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.mr-minimap__svg {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mr-minimap__node {
+  fill: var(--mat-sys-outline);
+
+  &--running {
+    fill: var(--app-color-pass);
+  }
+
+  &--done {
+    fill: rgba(255, 255, 255, 0.35);
+  }
+
+  &--failed {
+    fill: var(--app-color-fail-bg);
+  }
+
+  &--skipped {
+    fill: var(--app-color-warn-bg);
+  }
+}
+
+.mr-minimap__viewport {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke: var(--app-color-pass);
+  stroke-width: 1.5;
+  pointer-events: none;
+}

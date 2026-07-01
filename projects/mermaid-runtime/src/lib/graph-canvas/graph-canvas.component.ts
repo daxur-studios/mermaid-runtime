@@ -1,4 +1,5 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -16,7 +17,8 @@ import { CommonModule } from '@angular/common';
 import { MarkdownModule, MermaidAPI } from 'ngx-markdown';
 
 import { MermaidRuntime } from '../task-graph-model';
-import { GraphCameraComponent } from '../graph-camera/graph-camera.component';
+import { GraphCameraComponent, type GraphRect } from '../graph-camera/graph-camera.component';
+import { MinimapComponent } from '../minimap/minimap.component';
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface GraphEdge {
@@ -29,6 +31,19 @@ interface GraphEdge {
 interface GraphAliasMap {
   toAlias: Map<string, string>;
   toReal: Map<string, string>;
+}
+
+/**
+ * One node's scene-space rect + resolved status class, for a projected minimap.
+ *
+ * Value: `className` reuses the same status→class resolution as the real graph
+ * (`effectiveStatusStyles`), so a host's custom `statusStyles` are respected
+ * without the minimap needing its own copy of that map.
+ */
+export interface MinimapNodeRect {
+  id: string;
+  rect: GraphRect;
+  className: string;
 }
 
 /**
@@ -249,10 +264,28 @@ const EDGE_PULSE_DURATION_MS = 1000;
   templateUrl: './graph-canvas.component.html',
   styleUrl: './graph-canvas.component.scss',
   host: { class: 'mr-graph-canvas' },
-  imports: [CommonModule, MarkdownModule, GraphCameraComponent],
+  imports: [CommonModule, MarkdownModule, GraphCameraComponent, MinimapComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class GraphCanvasComponent {
+export class GraphCanvasComponent implements AfterViewInit {
+  readonly minimapContentRect = signal<GraphRect | null>(null);
+  readonly minimapNodes = signal<MinimapNodeRect[]>([]);
+  private readonly viewportSize = signal<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  readonly minimapViewportRect = computed<GraphRect | null>(() => {
+    const cameraComp = this.cameraRef();
+    if (!cameraComp) return null;
+    const { x, y, scale } = cameraComp.cameraState();
+    const size = this.viewportSize();
+    if (scale === 0 || size.width === 0 || size.height === 0) return null;
+    return {
+      x: -x / scale,
+      y: -y / scale,
+      width: size.width / scale,
+      height: size.height / scale,
+    };
+  });
+
   private readonly hostElement = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
@@ -436,9 +469,6 @@ export class GraphCanvasComponent {
     return map;
   });
 
-  /** Cache for asynchronously-rendered Mermaid subgraph SVGs. */
-  private readonly previewCache = new Map<string, string>();
-
   protected readonly flowMarkdown = computed(() => `\`\`\`mermaid\n${this.buildGraph()}\n\`\`\``);
 
   protected readonly effectiveSelectedNodeId = computed(() => {
@@ -476,6 +506,8 @@ export class GraphCanvasComponent {
    * the same idiom used for `selectedNode` — no separate lookup needed.
    */
   readonly contextMenuTarget = this.internalContextMenuTarget.asReadonly();
+
+
 
   /** Ids of the currently running nodes, joined — drives follow re-framing. */
   private readonly runningKey = computed(() =>
@@ -518,6 +550,8 @@ export class GraphCanvasComponent {
 
   private followFramePending = false;
 
+
+
   /**
    * Track previous status of each node.
    *
@@ -531,7 +565,20 @@ export class GraphCanvasComponent {
     const clickListener = (event: MouseEvent) => this.handleChartClick(event);
     const dblClickListener = (event: MouseEvent) => this.handleChartDblClick(event);
     const contextMenuListener = (event: MouseEvent) => this.handleChartContextMenu(event);
-    const chartObserver = new MutationObserver(() => this.onChartMutation());
+    const chartObserver = new MutationObserver((mutations) => {
+      const hasRealMutations = mutations.some((m) => {
+        const target = m.target;
+        if (target instanceof Element) {
+          if (target.closest('mr-minimap, .mr-minimap')) {
+            return false;
+          }
+        }
+        return true;
+      });
+      if (hasRealMutations) {
+        this.onChartMutation();
+      }
+    });
     host.addEventListener('click', clickListener, true);
     host.addEventListener('dblclick', dblClickListener, true);
     host.addEventListener('contextmenu', contextMenuListener, true);
@@ -590,6 +637,23 @@ export class GraphCanvasComponent {
       this.scheduleFollow();
     });
   }
+
+  ngAfterViewInit(): void {
+    console.log('[GraphCanvasComponent] ngAfterViewInit called');
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        console.log('[GraphCanvasComponent] ResizeObserver observed viewport size:', entry.contentRect.width, 'x', entry.contentRect.height);
+        this.viewportSize.set({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+      }
+    });
+    resizeObserver.observe(this.viewportRef().nativeElement);
+    this.destroyRef.onDestroy(() => resizeObserver.disconnect());
+  }
+
+
 
   private buildAliasMap(nodes: readonly MermaidRuntime.Node[]): GraphAliasMap {
     const toAlias = new Map<string, string>();
@@ -772,12 +836,21 @@ export class GraphCanvasComponent {
   }
 
   private onChartMutation(): void {
+    try {
+      // Guard against early DOM mutations before Angular has populated required inputs
+      this.nodes();
+    } catch (err) {
+      return;
+    }
+
     this.applySelectedNodeClass(this.effectiveSelectedNodeId());
     if (!this.hostElement.nativeElement.querySelector('.mermaid .node')) return;
     // A structural re-render produces fresh, class-less nodes; re-apply status.
     this.applyStatusClasses();
     this.applySubgraphPreviews();
     this.applyNodeProgressBars();
+
+    this.updateMinimap();
 
     if (this.followActive() && this.activeFocusId()) {
       // First render (or a re-render) with follow on and a focus node: frame it.
@@ -788,6 +861,44 @@ export class GraphCanvasComponent {
       this.hasFitInitialView = true;
       requestAnimationFrame(() => this.cameraRef().fitAll());
     }
+  }
+
+  private updateMinimap(): void {
+    const camera = this.cameraRef();
+    if (!camera) {
+      console.log('[GraphCanvasComponent] updateMinimap failed: camera is null');
+      return;
+    }
+
+    const content = camera.contentRect();
+    console.log('[GraphCanvasComponent] updateMinimap contentRect:', content);
+    this.minimapContentRect.set(content);
+
+    const styles = this.effectiveStatusStyles();
+    const nodeRects: MinimapNodeRect[] = [];
+    for (const node of this.activeNodes()) {
+      const element = this.findNodeElement(node.id);
+      if (!element) {
+        console.log(`[GraphCanvasComponent] updateMinimap element not found for node: ${node.id}`);
+        continue;
+      }
+      const rect = camera.measureElementsRect([element]);
+      if (rect) {
+        nodeRects.push({
+          id: node.id,
+          rect,
+          className: styles[node.status]?.className ?? 'undone',
+        });
+      } else {
+        console.log(`[GraphCanvasComponent] updateMinimap measureElementsRect returned null for node: ${node.id}`);
+      }
+    }
+    console.log('[GraphCanvasComponent] updateMinimap nodeRects count:', nodeRects.length);
+    this.minimapNodes.set(nodeRects);
+  }
+
+  centerOnPoint(point: { x: number; y: number }): void {
+    this.cameraRef().centerOn(point);
   }
 
   /** Called by the camera when the user manually pans/zooms — pauses follow. */
@@ -945,6 +1056,8 @@ export class GraphCanvasComponent {
     this.internalContextMenuTarget.set(null);
   }
 
+
+
   private readNodeIdFromLink(linkElement: Element): string | null {
     const href = linkElement.getAttribute('href') ?? linkElement.getAttribute('xlink:href');
     if (!href) return null;
@@ -975,6 +1088,8 @@ export class GraphCanvasComponent {
   private scheduleSubgraphPreviews(): void {
     requestAnimationFrame(() => this.applySubgraphPreviews());
   }
+
+
 
   /**
    * Apply each node's status colour and the live "current" highlight directly to
@@ -1266,7 +1381,6 @@ export class GraphCanvasComponent {
       this.removeSubgraphPreviews();
       return;
     }
-    const styles = this.effectiveStatusStyles();
     const showDetailed = this.showDetailedPreview();
 
     for (const node of this.activeNodes()) {
@@ -1274,61 +1388,28 @@ export class GraphCanvasComponent {
       const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
       if (!element || !label) continue;
 
+      const existing = label.querySelector('.task-graph-node-subgraph-preview');
       const graph = this.resolveSubgraph(node);
       if (!graph) {
-        label.querySelector('.task-graph-node-subgraph-preview-dot')?.remove();
-        label.querySelector('.task-graph-node-subgraph-preview-mermaid')?.remove();
+        existing?.remove();
         continue;
       }
 
-      // 1. Handle simplified DOT preview (always rendered for zoom-out fallback)
-      const dotExisting = label.querySelector('.task-graph-node-subgraph-preview-dot');
-      const { html: dotHtml, hash: dotHash } = this.buildSubgraphPreview(graph);
-      
-      if (dotExisting instanceof HTMLElement) {
-        if (dotExisting.dataset['sgHash'] !== dotHash) {
-          dotExisting.innerHTML = dotHtml;
-          dotExisting.dataset['sgHash'] = dotHash;
-        }
+      const { html, hash } = showDetailed
+        ? this.buildSubgraphDetailedPreview(graph)
+        : this.buildSubgraphPreview(graph);
+
+      if (existing instanceof HTMLElement) {
+        // Skip DOM write if the preview hash matches
+        if (existing.dataset['sgHash'] === hash) continue;
+        existing.innerHTML = html;
+        existing.dataset['sgHash'] = hash;
       } else {
         const wrap = document.createElement('div');
-        wrap.classList.add('task-graph-node-subgraph-preview-dot');
-        wrap.dataset['sgHash'] = dotHash;
-        wrap.innerHTML = dotHtml;
+        wrap.classList.add('task-graph-node-subgraph-preview');
+        wrap.dataset['sgHash'] = hash;
+        wrap.innerHTML = html;
         label.append(wrap);
-      }
-
-      // 2. Handle detailed Mermaid preview (rendered lazily when zoomed in)
-      if (showDetailed) {
-        const mermaidExisting = label.querySelector('.task-graph-node-subgraph-preview-mermaid');
-        const allEdges = this.resolveGraphEdges(graph);
-        const mermaidHash = `${graph.nodes.map((n) => `${n.id}:${n.status}`).join('|')}::${allEdges
-          .map((edge) => `${edge.from}>${edge.to}`)
-          .join('|')}`;
-
-        if (mermaidExisting instanceof HTMLElement) {
-          if (mermaidExisting.dataset['sgHash'] !== mermaidHash) {
-            if (this.previewCache.has(mermaidHash)) {
-              mermaidExisting.innerHTML = this.previewCache.get(mermaidHash)!;
-              mermaidExisting.dataset['sgHash'] = mermaidHash;
-            } else {
-              mermaidExisting.innerHTML = `<div class="sg-preview-loading">...</div>`;
-              mermaidExisting.dataset['sgHash'] = mermaidHash;
-              this.renderSubgraphPreviewAsync(node.id, graph, mermaidHash);
-            }
-          }
-        } else {
-          const wrap = document.createElement('div');
-          wrap.classList.add('task-graph-node-subgraph-preview-mermaid');
-          wrap.dataset['sgHash'] = mermaidHash;
-          if (this.previewCache.has(mermaidHash)) {
-            wrap.innerHTML = this.previewCache.get(mermaidHash)!;
-          } else {
-            wrap.innerHTML = `<div class="sg-preview-loading">...</div>`;
-            this.renderSubgraphPreviewAsync(node.id, graph, mermaidHash);
-          }
-          label.append(wrap);
-        }
       }
     }
   }
@@ -1336,7 +1417,7 @@ export class GraphCanvasComponent {
   /** Strip every injected subgraph thumbnail (toggle off). */
   private removeSubgraphPreviews(): void {
     for (const preview of this.hostElement.nativeElement.querySelectorAll(
-      '.task-graph-node-subgraph-preview-dot, .task-graph-node-subgraph-preview-mermaid',
+      '.task-graph-node-subgraph-preview',
     )) {
       preview.remove();
     }
@@ -1423,82 +1504,89 @@ export class GraphCanvasComponent {
   }
 
   /**
-   * Composes a simple Mermaid flowchart script for the subgraph, mapping node statuses to classes.
+   * Build the detailed preview SVG layout for a child graph, mapping node statuses to visual classes.
    *
-   * Purpose: Generate the raw syntax for the async Mermaid renderer.
-   * Value: Allows the preview to look exactly like the real Mermaid layout.
+   * PURPOSE: Lay the child graph out as a tiny flowchart with rectangles colored by their status,
+   * showing what the real Mermaid flowchart layout represents without the clutter of tiny text.
    */
-  private buildSubgraphMermaidCode(graph: MermaidRuntime.Graph): string {
-    const lines: string[] = ['flowchart LR'];
+  private buildSubgraphDetailedPreview(graph: MermaidRuntime.Graph): { html: string; hash: string } {
+    const allEdges = this.resolveGraphEdges(graph);
+    // Include status in hash so status changes trigger redraw
+    const hash = `${graph.nodes.map((node) => `${node.id}:${node.status}`).join('|')}::${allEdges
+      .map((edge) => `${edge.from}>${edge.to}`)
+      .join('|')}`;
+
+    const nodes = graph.nodes.slice(0, SUBGRAPH_PREVIEW_MAX_NODES);
+    const truncated = graph.nodes.length - nodes.length;
+    const ids = new Set(nodes.map((node) => node.id));
+    const edges = allEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
+
+    const depthById = this.computeGraphDepths(nodes, edges);
+
+    // Group nodes into columns by depth
+    const columns: string[][] = [];
+    for (const node of nodes) {
+      const depth = depthById.get(node.id) ?? 0;
+      (columns[depth] ??= []).push(node.id);
+    }
+
+    const boxW = 16;
+    const boxH = 8;
+    const colGap = 24;
+    const rowGap = 14;
+    const pad = 4;
+
+    const positionById = new Map<string, { x: number; y: number }>();
+    columns.forEach((column, depth) => {
+      column.forEach((id, row) => {
+        positionById.set(id, {
+          x: pad + depth * colGap,
+          y: pad + row * rowGap,
+        });
+      });
+    });
+
+    const columnCount = Math.max(1, columns.length);
+    const maxRows = Math.max(1, ...columns.map((column) => column.length));
+    let width = pad * 2 + boxW + (columnCount - 1) * colGap;
+    const height = pad * 2 + boxH + (maxRows - 1) * rowGap;
+
+    const edgeMarkup = edges
+      .map((edge) => {
+        const from = positionById.get(edge.from);
+        const to = positionById.get(edge.to);
+        if (!from || !to) return '';
+        const x1 = from.x + boxW;
+        const y1 = from.y + boxH / 2;
+        const x2 = to.x;
+        const y2 = to.y + boxH / 2;
+        return `<line class="sg-detailed-edge" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+      })
+      .join('');
+
     const styles = this.effectiveStatusStyles();
+    const boxMarkup = nodes
+      .map((node) => {
+        const pos = positionById.get(node.id);
+        if (!pos) return '';
+        const statusClass = styles[node.status]?.className ?? '';
+        return `<rect class="sg-detailed-box ${statusClass}" x="${pos.x}" y="${pos.y}" width="${boxW}" height="${boxH}" rx="1.5" ry="1.5" />`;
+      })
+      .join('');
 
-    const toAlias = new Map<string, string>();
-    graph.nodes.forEach((node, index) => {
-      toAlias.set(node.id, `n${index}`);
-    });
-
-    graph.nodes.forEach((node) => {
-      const alias = toAlias.get(node.id)!;
-      const title = node.title.replace(/"/g, '\\"');
-      lines.push(`  ${alias}["${title}"]`);
-    });
-
-    const edges = this.resolveGraphEdges(graph);
-    edges.forEach((edge) => {
-      const from = toAlias.get(edge.from);
-      const to = toAlias.get(edge.to);
-      if (from && to) {
-        lines.push(`  ${from} --> ${to}`);
-      }
-    });
-
-    graph.nodes.forEach((node) => {
-      const alias = toAlias.get(node.id)!;
-      const statusClass = styles[node.status]?.className;
-      if (statusClass) {
-        lines.push(`  class ${alias} ${statusClass};`);
-      }
-    });
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Renders the subgraph Mermaid SVG asynchronously and caches the result.
-   *
-   * Purpose: Drive background rendering without freezing the page.
-   * Value: Prevents layout lag and MutationObserver render loops.
-   */
-  private async renderSubgraphPreviewAsync(
-    nodeId: string,
-    graph: MermaidRuntime.Graph,
-    hash: string,
-  ): Promise<void> {
-    const mermaid = (window as any).mermaid;
-    if (!mermaid) {
-      console.warn('Mermaid global not found, cannot render subgraph preview');
-      return;
+    let overflowMarkup = '';
+    if (truncated > 0) {
+      const textX = width + 2;
+      width += SUBGRAPH_PREVIEW_OVERFLOW_LABEL_WIDTH_PX;
+      overflowMarkup = `<text class="sg-more" x="${textX}" y="${height / 2 + 3}">+${truncated}</text>`;
     }
 
-    const code = this.buildSubgraphMermaidCode(graph);
-    const renderId = `sg-preview-${nodeId}-${Math.random().toString(36).substring(2, 9)}`.replace(/[^a-zA-Z0-9-]/g, '');
+    const html =
+      `<svg class="sg-svg" width="${width}" height="${height}" ` +
+      `viewBox="0 0 ${width} ${height}" aria-hidden="true">` +
+      `${edgeMarkup}${boxMarkup}${overflowMarkup}</svg>`;
 
-    try {
-      const { svg } = await mermaid.render(renderId, code);
-      this.previewCache.set(hash, svg);
-
-      const element = this.findNodeElement(nodeId);
-      const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
-      const existing = label?.querySelector('.task-graph-node-subgraph-preview-mermaid') as HTMLElement;
-
-      if (existing && existing.dataset['sgHash'] === hash) {
-        existing.innerHTML = svg;
-      }
-    } catch (err) {
-      console.error('Failed to render subgraph preview for node:', nodeId, err);
-      const tempElement = document.getElementById(renderId);
-      tempElement?.remove();
-    }
+    return { html, hash };
   }
 
   /**

@@ -20,6 +20,9 @@
   (subgraphLeft)="subgraphLeft.emit($event)"
   (graphPathChange)="graphPathChange.emit($event)"
 >
+  <!-- Host-supplied viewport overlays (extra controls, minimap, legends). -->
+  <ng-content select="[overlay]"></ng-content>
+
   @if (showInspector()) {
     <mr-graph-inspector
       detail

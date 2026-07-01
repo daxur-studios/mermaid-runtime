@@ -4,3 +4,5 @@ export * from './lib/graph-inspector/graph-inspector.component';
 export * from './lib/graph-camera/graph-camera.component';
 export * from './lib/task-graph-model';
 export * from './lib/task-graph-ref-loader';
+export * from './lib/minimap/minimap.component';
+

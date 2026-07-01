@@ -1,6 +1,9 @@
-<div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()" [class.graph-canvas--zoomed-out]="!showDetailedPreview()">
+<div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()">
   <div class="graph-canvas__viewport" #viewport>
-    <mr-graph-camera class="graph-canvas__camera" (userInteract)="onUserInteract()">
+    <mr-graph-camera
+      class="graph-canvas__camera"
+      (userInteract)="onUserInteract()"
+    >
       <markdown
         [data]="flowMarkdown()"
         mermaid
@@ -36,6 +39,13 @@
 
     <!-- Host-supplied viewport overlays (extra controls, minimap, legends). -->
     <ng-content select="[overlay]"></ng-content>
+
+    <mr-minimap
+      [contentRect]="minimapContentRect()"
+      [viewportRect]="minimapViewportRect()"
+      [nodes]="minimapNodes()"
+      (jump)="centerOnPoint($event)"
+    />
   </div>
 
   <!-- Host-supplied side detail (inspector/sidebar); reserved only when showDetail. -->

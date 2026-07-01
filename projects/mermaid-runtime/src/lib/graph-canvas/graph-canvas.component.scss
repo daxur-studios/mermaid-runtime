@@ -264,8 +264,7 @@
 
 // ── Inline subgraph preview (decorative thumbnail) ─────────────────
 
-:host ::ng-deep .mermaid .task-graph-node-subgraph-preview-dot,
-:host ::ng-deep .mermaid .task-graph-node-subgraph-preview-mermaid {
+:host ::ng-deep .mermaid .task-graph-node-subgraph-preview {
   display: inline-flex;
   width: 54px;
   height: 54px;
@@ -279,14 +278,12 @@
   pointer-events: none;
   user-select: none;
   opacity: 0.85;
-}
 
-// Simplified DOT preview styling
-:host ::ng-deep .mermaid .task-graph-node-subgraph-preview-dot {
   .sg-svg {
     overflow: visible;
   }
 
+  // Simple dot preview styles
   .sg-edge {
     stroke: var(--mat-sys-outline);
     stroke-width: 1;
@@ -296,63 +293,43 @@
     fill: var(--mat-sys-surface-container-high);
     stroke: var(--mat-sys-outline);
     stroke-width: 0.75;
+
+    &--terminal {
+      fill: var(--mat-sys-primary);
+      stroke: var(--mat-sys-primary);
+    }
   }
 
-  .sg-dot--terminal {
-    fill: var(--mat-sys-primary);
-    stroke: var(--mat-sys-primary);
+  // Detailed box preview styles
+  .sg-detailed-edge {
+    stroke: var(--mat-sys-outline);
+    stroke-dasharray: 2 1;
+    stroke-width: 0.75;
+    opacity: 0.6;
+  }
+
+  .sg-detailed-box {
+    fill: var(--mat-sys-surface-container-high);
+    stroke: var(--mat-sys-outline);
+    stroke-width: 0.75;
+
+    &.running {
+      fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15));
+      stroke: var(--app-color-active, #2196f3);
+    }
+    &.passed, &.success {
+      fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
+      stroke: var(--app-color-pass, #4caf50);
+    }
+    &.failed, &.error {
+      fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
+      stroke: var(--app-color-fail, #f44336);
+    }
   }
 
   .sg-more {
     fill: var(--mat-sys-on-surface-variant);
     font-size: 7px;
-  }
-}
-
-// Detailed Mermaid preview styling
-:host ::ng-deep .mermaid .task-graph-node-subgraph-preview-mermaid {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--mat-sys-outline-variant);
-
-  svg {
-    width: 100% !important;
-    height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
-    display: block;
-    object-fit: contain;
-
-    // Scale down text inside the mini flowchart
-    .nodeText, text, span {
-      font-size: 6px !important;
-    }
-  }
-
-  .sg-preview-loading {
-    color: var(--mat-sys-on-surface-variant);
-    font-size: 0.7rem;
-  }
-}
-
-// ── Zoom-based preview visibility ──────────────────────────────────
-
-// Default: Show Mermaid preview, hide simplified dot preview when zoomed in
-:host ::ng-deep {
-  .task-graph-node-subgraph-preview-dot {
-    display: none !important;
-  }
-  .task-graph-node-subgraph-preview-mermaid {
-    display: inline-flex !important;
-  }
-}
-
-// Zoomed out: Show simplified dot preview, hide complex Mermaid preview
-.graph-canvas--zoomed-out ::ng-deep {
-  .task-graph-node-subgraph-preview-dot {
-    display: inline-flex !important;
-  }
-  .task-graph-node-subgraph-preview-mermaid {
-    display: none !important;
   }
 }
 
@@ -457,4 +434,52 @@
   stroke-width: 2.5px !important;
   stroke-dasharray: 6 4 !important;
   animation: edge-marching-ants 1s linear infinite !important;
+}
+
+:host ::ng-deep mr-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 56px;
+  z-index: 100;
+  display: block;
+  width: 168px;
+  height: 116px;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--mat-sys-surface-container) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+
+  .mr-minimap__svg {
+    display: block;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .mr-minimap__node {
+    fill: var(--mat-sys-outline);
+
+    &--running {
+      fill: var(--app-color-pass);
+    }
+
+    &--done {
+      fill: rgba(255, 255, 255, 0.35);
+    }
+
+    &--failed {
+      fill: var(--app-color-fail-bg);
+    }
+
+    &--skipped {
+      fill: var(--app-color-warn-bg);
+    }
+  }
+
+  .mr-minimap__viewport {
+    fill: rgba(255, 255, 255, 0.08);
+    stroke: var(--app-color-pass);
+    stroke-width: 1.5;
+    pointer-events: none;
+  }
 }
