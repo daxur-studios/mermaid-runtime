@@ -174,6 +174,15 @@ const SUBGRAPH_PREVIEW_PADDING_PX = 5;
 const SUBGRAPH_PREVIEW_OVERFLOW_LABEL_WIDTH_PX = 16;
 
 /**
+ * Zoom scale threshold below which we show the simplified dot preview instead of the real Mermaid preview.
+ *
+ * Value: Keeps the node clear of high-density text and paths when zoomed far out, automatically
+ * showing the simple preview instead.
+ */
+const SUBGRAPH_PREVIEW_DETAIL_ZOOM_THRESHOLD = 0.7;
+
+
+/**
  * Default Mermaid render configuration for the task graph.
  *
  * Value: Dark theme to match the app, `loose` security so click hrefs render
@@ -382,6 +391,18 @@ export class GraphCanvasComponent {
   /** True while inside a subgraph (the stack is non-empty). */
   protected readonly inSubgraph = computed(() => this.graphStack().length > 0);
 
+  /** Current camera zoom scale. */
+  protected readonly currentZoom = computed(() => {
+    const cameraComp = this.cameraRef();
+    return cameraComp ? cameraComp.cameraState().scale : 1.0;
+  });
+
+  /** Whether the detailed preview should be displayed instead of the fallback dot preview. */
+  protected readonly showDetailedPreview = computed(() => {
+    return this.currentZoom() >= SUBGRAPH_PREVIEW_DETAIL_ZOOM_THRESHOLD;
+  });
+
+
   /** Breadcrumb trail (root + each entered level); empty at the root graph. */
   protected readonly breadcrumb = computed<GraphCrumb[]>(() => {
     const stack = this.graphStack();
@@ -414,6 +435,9 @@ export class GraphCanvasComponent {
     (this.activeGroups() ?? []).forEach((group, index) => map.set(group.id, `tgGrp${index}`));
     return map;
   });
+
+  /** Cache for asynchronously-rendered Mermaid subgraph SVGs. */
+  private readonly previewCache = new Map<string, string>();
 
   protected readonly flowMarkdown = computed(() => `\`\`\`mermaid\n${this.buildGraph()}\n\`\`\``);
 
@@ -544,12 +568,14 @@ export class GraphCanvasComponent {
       this.scheduleNodeProgressBars();
     });
 
-    // Re-apply the inline subgraph thumbnails when the toggle flips or the active
-    // level changes. A structural re-render already re-applies them via
-    // `onChartMutation`; this covers the false→true toggle (no re-render fires).
+    // Re-apply the inline subgraph thumbnails when the toggle flips, the active
+    // level changes, or the detailed zoom threshold is crossed. A structural re-render 
+    // already re-applies them via `onChartMutation`; this covers the false→true toggle 
+    // and zoom threshold crossings.
     effect(() => {
       this.showSubgraphPreview();
       this.graphStack();
+      this.showDetailedPreview();
       this.scheduleSubgraphPreviews();
     });
 
@@ -1240,31 +1266,69 @@ export class GraphCanvasComponent {
       this.removeSubgraphPreviews();
       return;
     }
+    const styles = this.effectiveStatusStyles();
+    const showDetailed = this.showDetailedPreview();
+
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
       if (!element || !label) continue;
 
-      const existing = label.querySelector('.task-graph-node-subgraph-preview');
       const graph = this.resolveSubgraph(node);
       if (!graph) {
-        existing?.remove();
+        label.querySelector('.task-graph-node-subgraph-preview-dot')?.remove();
+        label.querySelector('.task-graph-node-subgraph-preview-mermaid')?.remove();
         continue;
       }
 
-      const { html, hash } = this.buildSubgraphPreview(graph);
-      if (existing instanceof HTMLElement) {
-        // Skip the DOM write when the structure is unchanged — an unconditional
-        // write would be a childList mutation that re-triggers `onChartMutation`.
-        if (existing.dataset['sgHash'] === hash) continue;
-        existing.innerHTML = html;
-        existing.dataset['sgHash'] = hash;
+      // 1. Handle simplified DOT preview (always rendered for zoom-out fallback)
+      const dotExisting = label.querySelector('.task-graph-node-subgraph-preview-dot');
+      const { html: dotHtml, hash: dotHash } = this.buildSubgraphPreview(graph);
+      
+      if (dotExisting instanceof HTMLElement) {
+        if (dotExisting.dataset['sgHash'] !== dotHash) {
+          dotExisting.innerHTML = dotHtml;
+          dotExisting.dataset['sgHash'] = dotHash;
+        }
       } else {
         const wrap = document.createElement('div');
-        wrap.classList.add('task-graph-node-subgraph-preview');
-        wrap.dataset['sgHash'] = hash;
-        wrap.innerHTML = html;
+        wrap.classList.add('task-graph-node-subgraph-preview-dot');
+        wrap.dataset['sgHash'] = dotHash;
+        wrap.innerHTML = dotHtml;
         label.append(wrap);
+      }
+
+      // 2. Handle detailed Mermaid preview (rendered lazily when zoomed in)
+      if (showDetailed) {
+        const mermaidExisting = label.querySelector('.task-graph-node-subgraph-preview-mermaid');
+        const allEdges = this.resolveGraphEdges(graph);
+        const mermaidHash = `${graph.nodes.map((n) => `${n.id}:${n.status}`).join('|')}::${allEdges
+          .map((edge) => `${edge.from}>${edge.to}`)
+          .join('|')}`;
+
+        if (mermaidExisting instanceof HTMLElement) {
+          if (mermaidExisting.dataset['sgHash'] !== mermaidHash) {
+            if (this.previewCache.has(mermaidHash)) {
+              mermaidExisting.innerHTML = this.previewCache.get(mermaidHash)!;
+              mermaidExisting.dataset['sgHash'] = mermaidHash;
+            } else {
+              mermaidExisting.innerHTML = `<div class="sg-preview-loading">...</div>`;
+              mermaidExisting.dataset['sgHash'] = mermaidHash;
+              this.renderSubgraphPreviewAsync(node.id, graph, mermaidHash);
+            }
+          }
+        } else {
+          const wrap = document.createElement('div');
+          wrap.classList.add('task-graph-node-subgraph-preview-mermaid');
+          wrap.dataset['sgHash'] = mermaidHash;
+          if (this.previewCache.has(mermaidHash)) {
+            wrap.innerHTML = this.previewCache.get(mermaidHash)!;
+          } else {
+            wrap.innerHTML = `<div class="sg-preview-loading">...</div>`;
+            this.renderSubgraphPreviewAsync(node.id, graph, mermaidHash);
+          }
+          label.append(wrap);
+        }
       }
     }
   }
@@ -1272,7 +1336,7 @@ export class GraphCanvasComponent {
   /** Strip every injected subgraph thumbnail (toggle off). */
   private removeSubgraphPreviews(): void {
     for (const preview of this.hostElement.nativeElement.querySelectorAll(
-      '.task-graph-node-subgraph-preview',
+      '.task-graph-node-subgraph-preview-dot, .task-graph-node-subgraph-preview-mermaid',
     )) {
       preview.remove();
     }
@@ -1356,6 +1420,85 @@ export class GraphCanvasComponent {
       `viewBox="0 0 ${width} ${height}" aria-hidden="true">` +
       `${edgeMarkup}${dotMarkup}${overflowMarkup}</svg>`;
     return { html, hash };
+  }
+
+  /**
+   * Composes a simple Mermaid flowchart script for the subgraph, mapping node statuses to classes.
+   *
+   * Purpose: Generate the raw syntax for the async Mermaid renderer.
+   * Value: Allows the preview to look exactly like the real Mermaid layout.
+   */
+  private buildSubgraphMermaidCode(graph: MermaidRuntime.Graph): string {
+    const lines: string[] = ['flowchart LR'];
+    const styles = this.effectiveStatusStyles();
+
+    const toAlias = new Map<string, string>();
+    graph.nodes.forEach((node, index) => {
+      toAlias.set(node.id, `n${index}`);
+    });
+
+    graph.nodes.forEach((node) => {
+      const alias = toAlias.get(node.id)!;
+      const title = node.title.replace(/"/g, '\\"');
+      lines.push(`  ${alias}["${title}"]`);
+    });
+
+    const edges = this.resolveGraphEdges(graph);
+    edges.forEach((edge) => {
+      const from = toAlias.get(edge.from);
+      const to = toAlias.get(edge.to);
+      if (from && to) {
+        lines.push(`  ${from} --> ${to}`);
+      }
+    });
+
+    graph.nodes.forEach((node) => {
+      const alias = toAlias.get(node.id)!;
+      const statusClass = styles[node.status]?.className;
+      if (statusClass) {
+        lines.push(`  class ${alias} ${statusClass};`);
+      }
+    });
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Renders the subgraph Mermaid SVG asynchronously and caches the result.
+   *
+   * Purpose: Drive background rendering without freezing the page.
+   * Value: Prevents layout lag and MutationObserver render loops.
+   */
+  private async renderSubgraphPreviewAsync(
+    nodeId: string,
+    graph: MermaidRuntime.Graph,
+    hash: string,
+  ): Promise<void> {
+    const mermaid = (window as any).mermaid;
+    if (!mermaid) {
+      console.warn('Mermaid global not found, cannot render subgraph preview');
+      return;
+    }
+
+    const code = this.buildSubgraphMermaidCode(graph);
+    const renderId = `sg-preview-${nodeId}-${Math.random().toString(36).substring(2, 9)}`.replace(/[^a-zA-Z0-9-]/g, '');
+
+    try {
+      const { svg } = await mermaid.render(renderId, code);
+      this.previewCache.set(hash, svg);
+
+      const element = this.findNodeElement(nodeId);
+      const label = element?.querySelector('.nodeLabel') ?? element?.querySelector('span');
+      const existing = label?.querySelector('.task-graph-node-subgraph-preview-mermaid') as HTMLElement;
+
+      if (existing && existing.dataset['sgHash'] === hash) {
+        existing.innerHTML = svg;
+      }
+    } catch (err) {
+      console.error('Failed to render subgraph preview for node:', nodeId, err);
+      const tempElement = document.getElementById(renderId);
+      tempElement?.remove();
+    }
   }
 
   /**

@@ -64,16 +64,17 @@ if (Test-Path $lockPath) {
     $pattern = '("' + $escapedPkg + '"[\s\S]{1,400}?"integrity":\s*")[^"]+'
     $updated = [regex]::Replace($lock, $pattern, ('$1' + $newIntegrity))
     if ($updated -eq $lock) {
-        Write-Host "  (lockfile integrity line not found — skipping update)"
+        Write-Host "  (lockfile integrity line not found - skipping update)"
     } else {
         Set-Content $lockPath $updated -NoNewline
-        Write-Host "  Lockfile integrity updated → $($newIntegrity.Substring(0, 30))..."
+        Write-Host "  Lockfile integrity updated -> $($newIntegrity.Substring(0, 30))..."
     }
 }
 
 # ── 5. Reinstall ──────────────────────────────────────────────────────────────
 Write-Host "`nInstalling in consumer..."
-$installedPkg = Join-Path $ConsumerDir "node_modules" ($pkgName -replace '/', '\')
+$nodeModulesDir = Join-Path $ConsumerDir "node_modules"
+$installedPkg = Join-Path $nodeModulesDir ($pkgName -replace '/', '\')
 if (Test-Path $installedPkg) {
     Remove-Item -Recurse -Force $installedPkg
 }
@@ -81,10 +82,11 @@ Push-Location $ConsumerDir
 npm install --no-audit --no-fund --prefer-offline 2>&1 | Select-Object -Last 5
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "npm install failed" }
 Pop-Location
-
+ 
 # ── 6. Verify ─────────────────────────────────────────────────────────────────
-$mjs = Join-Path $ConsumerDir "node_modules" ($pkgName -replace '/', '\') `
-       "fesm2022" (($pkgName -replace '^@', '' -replace '/', '-') + ".mjs")
+$pkgSubpath = Join-Path ($pkgName -replace '/', '\') "fesm2022"
+$pkgFile = ($pkgName -replace '^@', '' -replace '/', '-') + ".mjs"
+$mjs = Join-Path $nodeModulesDir (Join-Path $pkgSubpath $pkgFile)
 if (-not (Test-Path $mjs)) {
     Write-Warning "Installed mjs not found at: $mjs"
 } else {
@@ -92,6 +94,6 @@ if (-not (Test-Path $mjs)) {
     if ($hits -gt 0) {
         Write-Host "`nDeploy complete. $hits mr-* selector(s) verified in installed package."
     } else {
-        Write-Warning "mr-* selectors NOT found in installed package — check build output."
+        Write-Warning "mr-* selectors NOT found in installed package - check build output."
     }
 }

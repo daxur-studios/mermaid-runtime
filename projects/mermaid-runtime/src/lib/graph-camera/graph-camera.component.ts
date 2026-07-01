@@ -124,6 +124,7 @@ export class GraphCameraComponent {
   readonly userInteract = output<void>();
 
   private readonly camera = signal<GraphCameraState>({ x: 0, y: 0, scale: 1 });
+  readonly cameraState = this.camera.asReadonly();
 
   protected readonly sceneTransform = computed(() => {
     const { x, y, scale } = this.camera();
