@@ -2,6 +2,8 @@
 /dist
 /tmp
 /out-tsc
+.angular/cache
+scripts/deploy.local.json
 
 # Node
 /node_modules

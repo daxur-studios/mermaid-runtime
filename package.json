@@ -5,6 +5,7 @@
     "ng": "ng",
     "build": "ng build mermaid-runtime",
     "pack": "ng build mermaid-runtime && cd dist/mermaid-runtime && npm pack",
+    "deploy": "pwsh -File scripts/deploy.ps1",
     "watch": "ng build mermaid-runtime --watch --configuration development"
   },
   "private": true,
