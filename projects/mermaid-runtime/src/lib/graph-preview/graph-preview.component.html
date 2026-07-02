@@ -1,0 +1,8 @@
+@switch (mode()) {
+  @case ('mermaid') {
+    <mr-graph-preview-mermaid [graph]="graph()" [statusStyles]="statusStyles()" />
+  }
+  @default {
+    <mr-graph-preview-simple [graph]="graph()" [statusStyles]="statusStyles()" />
+  }
+}

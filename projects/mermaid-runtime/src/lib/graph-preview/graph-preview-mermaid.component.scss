@@ -1,0 +1,54 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 40px;
+  overflow: hidden;
+}
+
+.gp-mermaid-root {
+  width: 100%;
+  height: 100%;
+
+  ::ng-deep svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  // Clicks are suppressed in the component (decorative preview only) — hint that visually too.
+  ::ng-deep a {
+    cursor: default;
+  }
+
+  ::ng-deep .node.running .basic,
+  ::ng-deep .node.running .label-container,
+  ::ng-deep .node.running polygon,
+  ::ng-deep .node.running rect {
+    fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15)) !important;
+    stroke: var(--app-color-active, #2196f3) !important;
+  }
+
+  ::ng-deep .node.done .basic,
+  ::ng-deep .node.done .label-container,
+  ::ng-deep .node.done polygon,
+  ::ng-deep .node.done rect {
+    fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15)) !important;
+    stroke: var(--app-color-pass, #4caf50) !important;
+  }
+
+  ::ng-deep .node.failed .basic,
+  ::ng-deep .node.failed .label-container,
+  ::ng-deep .node.failed polygon,
+  ::ng-deep .node.failed rect {
+    fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15)) !important;
+    stroke: var(--app-color-fail, #f44336) !important;
+  }
+
+  ::ng-deep .node.skipped .basic,
+  ::ng-deep .node.skipped .label-container,
+  ::ng-deep .node.skipped polygon,
+  ::ng-deep .node.skipped rect {
+    fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15)) !important;
+    stroke: var(--app-color-warn, #ffc107) !important;
+  }
+}

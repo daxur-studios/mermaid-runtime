@@ -1,0 +1,55 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+.gp-simple-root {
+  width: 100%;
+  height: 100%;
+}
+
+.gp-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.gp-edge {
+  stroke: var(--mat-sys-outline, rgba(255, 255, 255, 0.3));
+  stroke-dasharray: 2 1;
+  stroke-width: 0.75;
+  opacity: 0.6;
+}
+
+.gp-box {
+  fill: var(--mat-sys-surface-container-high, rgba(255, 255, 255, 0.08));
+  stroke: var(--mat-sys-outline, rgba(255, 255, 255, 0.3));
+  stroke-width: 0.75;
+
+  &.running {
+    fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15));
+    stroke: var(--app-color-active, #2196f3);
+  }
+  &.done,
+  &.passed,
+  &.success {
+    fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
+    stroke: var(--app-color-pass, #4caf50);
+  }
+  &.failed,
+  &.error {
+    fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
+    stroke: var(--app-color-fail, #f44336);
+  }
+  &.skipped {
+    fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15));
+    stroke: var(--app-color-warn, #ffc107);
+  }
+}
+
+.gp-more {
+  fill: var(--mat-sys-on-surface-variant, rgba(255, 255, 255, 0.6));
+  font-size: 7px;
+}

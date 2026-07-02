@@ -131,7 +131,7 @@
 :host ::ng-deep .mermaid .node.has-subgraph .basic,
 :host ::ng-deep .mermaid .node.has-subgraph .label-container,
 :host ::ng-deep .mermaid .node.has-subgraph polygon,
-:host ::ng-deep .mermaid .node.has-subgraph rect {
+:host ::ng-deep .mermaid .node.has-subgraph rect:not(.sg-detailed-box) {
   stroke-dasharray: 5 3;
   stroke: var(--mat-sys-primary) !important;
 }
@@ -165,7 +165,7 @@
 :host ::ng-deep .mermaid .node:hover .basic,
 :host ::ng-deep .mermaid .node:hover .label-container,
 :host ::ng-deep .mermaid .node:hover polygon,
-:host ::ng-deep .mermaid .node:hover rect {
+:host ::ng-deep .mermaid .node:hover rect:not(.sg-detailed-box) {
   filter: brightness(1.2);
   stroke: var(--mat-sys-primary) !important;
   stroke-width: 3px !important;
@@ -317,13 +317,17 @@
       fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15));
       stroke: var(--app-color-active, #2196f3);
     }
-    &.passed, &.success {
+    &.done, &.passed, &.success {
       fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
       stroke: var(--app-color-pass, #4caf50);
     }
     &.failed, &.error {
       fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
       stroke: var(--app-color-fail, #f44336);
+    }
+    &.skipped {
+      fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15));
+      stroke: var(--app-color-warn, #ffc107);
     }
   }
 
@@ -338,11 +342,11 @@
 :host ::ng-deep .mermaid .node.current .basic,
 :host ::ng-deep .mermaid .node.current .label-container,
 :host ::ng-deep .mermaid .node.current polygon,
-:host ::ng-deep .mermaid .node.current rect,
+:host ::ng-deep .mermaid .node.current rect:not(.sg-detailed-box),
 :host ::ng-deep .mermaid .node.running .basic,
 :host ::ng-deep .mermaid .node.running .label-container,
 :host ::ng-deep .mermaid .node.running polygon,
-:host ::ng-deep .mermaid .node.running rect {
+:host ::ng-deep .mermaid .node.running rect:not(.sg-detailed-box) {
   fill: var(--app-color-pass-bg) !important;
   stroke: var(--app-color-pass) !important;
   stroke-width: 3px !important;
@@ -351,7 +355,7 @@
 :host ::ng-deep .mermaid .node.done .basic,
 :host ::ng-deep .mermaid .node.done .label-container,
 :host ::ng-deep .mermaid .node.done polygon,
-:host ::ng-deep .mermaid .node.done rect {
+:host ::ng-deep .mermaid .node.done rect:not(.sg-detailed-box) {
   fill: rgba(255, 255, 255, 0.06) !important;
   stroke: var(--app-color-pass) !important;
 }
@@ -359,7 +363,7 @@
 :host ::ng-deep .mermaid .node.failed .basic,
 :host ::ng-deep .mermaid .node.failed .label-container,
 :host ::ng-deep .mermaid .node.failed polygon,
-:host ::ng-deep .mermaid .node.failed rect {
+:host ::ng-deep .mermaid .node.failed rect:not(.sg-detailed-box) {
   fill: var(--app-color-fail-bg) !important;
   stroke: var(--app-color-fail) !important;
 }
@@ -367,7 +371,7 @@
 :host ::ng-deep .mermaid .node.skipped .basic,
 :host ::ng-deep .mermaid .node.skipped .label-container,
 :host ::ng-deep .mermaid .node.skipped polygon,
-:host ::ng-deep .mermaid .node.skipped rect {
+:host ::ng-deep .mermaid .node.skipped rect:not(.sg-detailed-box) {
   fill: var(--app-color-warn-bg) !important;
   stroke: var(--app-color-warn) !important;
 }
@@ -383,7 +387,7 @@
 :host ::ng-deep .mermaid .node.selected .basic,
 :host ::ng-deep .mermaid .node.selected .label-container,
 :host ::ng-deep .mermaid .node.selected polygon,
-:host ::ng-deep .mermaid .node.selected rect {
+:host ::ng-deep .mermaid .node.selected rect:not(.sg-detailed-box) {
   filter: drop-shadow(0 0 0.35rem var(--mat-sys-primary));
   stroke-width: 3px !important;
 }
@@ -393,7 +397,7 @@
 :host ::ng-deep .mermaid .node.pulse-active .basic,
 :host ::ng-deep .mermaid .node.pulse-active .label-container,
 :host ::ng-deep .mermaid .node.pulse-active polygon,
-:host ::ng-deep .mermaid .node.pulse-active rect {
+:host ::ng-deep .mermaid .node.pulse-active rect:not(.sg-detailed-box) {
   stroke-width: 6px !important;
   transition: stroke-width 0.1s cubic-bezier(0.1, 0.8, 0.3, 1) !important;
 }
