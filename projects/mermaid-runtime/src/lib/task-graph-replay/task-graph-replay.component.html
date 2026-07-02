@@ -1,0 +1,85 @@
+@if (!isReplaying()) {
+  <button
+    type="button"
+    class="mr-replay-start-btn"
+    (click)="startReplay()"
+  >
+    ▶ Replay timeline
+  </button>
+} @else {
+  <div class="mr-replay-panel">
+    <div class="mr-replay-controls">
+      <button type="button" class="mr-replay-btn" (click)="goToStart()" title="First step">⏮</button>
+      <button type="button" class="mr-replay-btn" (click)="stepBack()" [disabled]="currentSeq() === 0" title="Step back">◀</button>
+
+      @if (isPlaying()) {
+        <button type="button" class="mr-replay-btn mr-replay-btn--primary" (click)="pauseReplay()" title="Pause">⏸</button>
+      } @else {
+        <button type="button" class="mr-replay-btn mr-replay-btn--primary" (click)="playReplay()" [disabled]="currentSeq() === maxSeq()" title="Play">▶</button>
+      }
+
+      <button type="button" class="mr-replay-btn" (click)="stepForward()" [disabled]="currentSeq() === maxSeq()" title="Step forward">▶</button>
+      <button type="button" class="mr-replay-btn" (click)="goToEnd()" title="Last step">⏭</button>
+
+      <button type="button" class="mr-replay-btn" (click)="stopReplay()">Exit Replay</button>
+    </div>
+
+    <div class="mr-replay-slider-container">
+      <input
+        type="range"
+        class="mr-replay-slider"
+        [min]="0"
+        [max]="maxSeq()"
+        [value]="currentSeq()"
+        (input)="onSliderInput($event)"
+      />
+      <span class="mr-replay-progress-text">
+        {{ currentSeq() }} / {{ maxSeq() }}
+      </span>
+    </div>
+
+    <div class="mr-replay-event-ticker" [class.has-event]="currentSeq() > 0">
+      @if (currentSeq() > 0 && currentEvent(); as event) {
+        <div class="mr-replay-event-card">
+          <span class="mr-replay-event-badge" [attr.data-kind]="event.kind">
+            {{ event.kind }}
+          </span>
+          <span class="mr-replay-event-desc">
+            @if (event.kind === 'node-started') {
+              Node <code class="mr-replay-code-inline">{{ event.nodeId }}</code> started.
+            } @else if (event.kind === 'node-ended') {
+              Node <code class="mr-replay-code-inline">{{ event.nodeId }}</code> ended as <span class="mr-replay-event-status" [attr.data-status]="event.status">{{ event.status }}</span>.
+            } @else if (event.kind === 'edge-traversed') {
+              Traversed to <code class="mr-replay-code-inline">{{ event.edgeId?.includes(':') ? event.edgeId.split(':')[2] : event.edgeId }}</code>.
+              @if (event.detail) {
+                (<em>{{ event.detail }}</em>)
+              }
+            }
+          </span>
+          @if (event.detail && event.kind !== 'edge-traversed') {
+            <span class="mr-replay-event-detail">— "{{ event.detail }}"</span>
+          }
+          <span class="mr-replay-event-time">{{ event.at | date:'HH:mm:ss.SSS' }}</span>
+        </div>
+      } @else {
+        <div class="mr-replay-event-card-empty">
+          Timeline initialized. Play or scrub to step through execution.
+        </div>
+      }
+    </div>
+
+    <div class="mr-replay-speed">
+      Speed:
+      <select
+        class="mr-replay-select"
+        [value]="playbackSpeed()"
+        (change)="setPlaybackSpeed($any($event.target).value)"
+      >
+        <option value="2000">Slow (0.5x)</option>
+        <option value="1100">Normal (1x)</option>
+        <option value="500">Fast (2x)</option>
+        <option value="200">Hyper (5x)</option>
+      </select>
+    </div>
+  </div>
+}

@@ -247,4 +247,24 @@ export namespace MermaidRuntime {
     /** Optional node groups at this graph's level (see {@link NodeGroup}). */
     groups?: NodeGroup[] | null;
   }
+
+  /** The kind of timeline events recorded during a graph execution. */
+  export type ExecutionEventKind = 'node-started' | 'node-ended' | 'edge-traversed';
+
+  /**
+   * One timeline event in a graph's execution history.
+   *
+   * VALUE: Deliberate structural subset of DaxurDaemonAPI.TaskGraphExecutionEvent.
+   */
+  export interface ExecutionEvent {
+    /** 1-based position in execution order. */
+    seq: number;
+    /** ISO timestamp the event occurred. */
+    at: string;
+    kind: ExecutionEventKind;
+    nodeId?: string | null;
+    edgeId?: string | null;
+    status?: NodeStatus | null;
+    detail?: string | null;
+  }
 }

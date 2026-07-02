@@ -10,4 +10,5 @@ export * from './lib/graph-preview/graph-preview-simple.component';
 export * from './lib/graph-preview/graph-preview-mermaid.component';
 export * from './lib/graph-preview/graph-preview.utils';
 export * from './lib/graph-preview/status-styles';
+export * from './lib/task-graph-replay/task-graph-replay.component';
 
