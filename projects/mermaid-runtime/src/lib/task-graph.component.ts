@@ -91,6 +91,22 @@ export class TaskGraphComponent {
   /** The node to mark as the live "current" focus, if any. */
   readonly currentNodeId = input<string | null>(null);
 
+  /**
+   * Whether the graph is currently showing a timeline replay.
+   *
+   * VALUE: Lets the inner canvas keep replay animation separate from live
+   * execution status pulses.
+   */
+  readonly replayActive = input<boolean>(false);
+
+  /**
+   * Current timeline event to animate during replay.
+   *
+   * VALUE: The canvas can paint the exact recorded node or edge step while this
+   * wrapper preserves the existing one-component graph API.
+   */
+  readonly replayEvent = input<MermaidRuntime.ExecutionEvent | null>(null);
+
   /** Per-node display overrides, keyed by real node id. */
   readonly decorations = input<Record<string, TaskGraphNodeDecoration>>({});
 

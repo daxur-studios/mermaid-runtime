@@ -46,30 +46,6 @@
     var(--pan-x, 0px) var(--pan-y, 0px);
 }
 
-// Path flow animation lines (for trace replay loop)
-:host ::ng-deep .mr-path-flow-line {
-  fill: none;
-  stroke: #00f0ff; // Sleek glowing cyan
-  stroke-width: 2.5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 20 80;
-  stroke-dashoffset: 100;
-  animation: mr-path-flow-animation 3.5s linear infinite;
-  opacity: 0.75;
-  filter: drop-shadow(0 0 2.5px rgba(0, 240, 255, 0.5));
-  pointer-events: none;
-}
-
-@keyframes mr-path-flow-animation {
-  from {
-    stroke-dashoffset: 100;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 .graph-canvas__camera {
   width: 100%;
   height: 100%;
@@ -445,11 +421,43 @@
   transition: stroke-width 0.1s cubic-bezier(0.1, 0.8, 0.3, 1) !important;
 }
 
+@keyframes mr-replay-node-flash {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+
+  18% {
+    filter: brightness(1.45) drop-shadow(0 0 0.45rem rgba(255, 255, 255, 0.32));
+  }
+
+  34% {
+    filter: brightness(1.08) drop-shadow(0 0 0.24rem rgba(255, 255, 255, 0.16));
+  }
+}
+
+:host ::ng-deep .mermaid .node.mr-replay-node-flash .basic,
+:host ::ng-deep .mermaid .node.mr-replay-node-flash .label-container,
+:host ::ng-deep .mermaid .node.mr-replay-node-flash polygon,
+:host ::ng-deep .mermaid .node.mr-replay-node-flash rect:not(.sg-detailed-box) {
+  animation: mr-replay-node-flash 560ms ease-out both;
+}
+
 // ── Connection Line Styling & Marching Ants ──────────────────────────
 
 @keyframes edge-marching-ants {
   to {
     stroke-dashoffset: -20;
+  }
+}
+
+@keyframes mr-replay-edge-trace {
+  from {
+    stroke-dashoffset: 100;
+  }
+
+  to {
+    stroke-dashoffset: 0;
   }
 }
 
@@ -481,6 +489,24 @@
   stroke-width: 2.5px !important;
   stroke-dasharray: 6 4 !important;
   animation: edge-marching-ants 1s linear infinite !important;
+}
+
+:host ::ng-deep .mermaid .mr-replay-edge-trace {
+  fill: none;
+  stroke: var(--mat-sys-primary);
+  stroke-width: 3px !important;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 22 78 !important;
+  stroke-dashoffset: 100;
+  opacity: 0.9;
+  animation: mr-replay-edge-trace 720ms ease-out both;
+  filter: drop-shadow(0 0 0.25rem rgba(255, 255, 255, 0.28));
+  pointer-events: none;
+}
+
+:host ::ng-deep .mermaid .mr-replay-animation-overlay-group {
+  pointer-events: none;
 }
 
 :host ::ng-deep mr-minimap {

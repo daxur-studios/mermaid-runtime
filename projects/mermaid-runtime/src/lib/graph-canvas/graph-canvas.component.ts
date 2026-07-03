@@ -244,6 +244,91 @@ const NODE_PULSE_DURATION_MS = 500;
  */
 const EDGE_PULSE_DURATION_MS = 1000;
 
+/**
+ * Duration (ms) that a replay node flash remains active.
+ *
+ * VALUE: Matches the one-shot replay flash CSS so stale replay classes are removed
+ * promptly before the next event paints.
+ */
+const REPLAY_NODE_FLASH_DURATION_MS = 560;
+
+/**
+ * Duration (ms) that a replay edge trace remains active.
+ *
+ * VALUE: Keeps the transient SVG overlay visible only for the active replay event.
+ */
+const REPLAY_EDGE_TRACE_DURATION_MS = 720;
+
+/**
+ * Delay (ms) before clearing replay event visuals.
+ *
+ * VALUE: Uses the longer replay animation duration so node and edge effects can
+ * share one cleanup timer.
+ */
+const REPLAY_EVENT_CLEAR_DELAY_MS = REPLAY_EDGE_TRACE_DURATION_MS;
+
+/**
+ * SVG namespace used for replay overlay paths.
+ *
+ * VALUE: Ensures injected replay traces are real SVG paths, not HTML elements.
+ */
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+/**
+ * PathLength value assigned to replay traces.
+ *
+ * VALUE: Normalizes every cloned Mermaid edge to a 0-100 animation scale,
+ * regardless of its physical SVG length.
+ */
+const REPLAY_EDGE_TRACE_PATH_LENGTH = "100";
+
+/**
+ * CSS class for the transient replay overlay group.
+ *
+ * VALUE: Keeps replay SVG nodes identifiable for cleanup and mutation filtering.
+ */
+const REPLAY_ANIMATION_OVERLAY_CLASS = "mr-replay-animation-overlay-group";
+
+/**
+ * CSS class for the transient edge path drawn during timeline replay.
+ *
+ * VALUE: Separates replay motion from Mermaid's real edge path so the base line
+ * styling remains stable.
+ */
+const REPLAY_EDGE_TRACE_CLASS = "mr-replay-edge-trace";
+
+/**
+ * CSS class for the one-shot node flash drawn during timeline replay.
+ *
+ * VALUE: Highlights only the current replay event's node instead of animating the
+ * whole completed graph.
+ */
+const REPLAY_NODE_FLASH_CLASS = "mr-replay-node-flash";
+
+/**
+ * Minimum segment count for graph-execution edge ids.
+ *
+ * VALUE: Documents the positional `kind:from:to[:label]` edge id format shared
+ * with the daemon graph execution builder.
+ */
+const GRAPH_EDGE_ID_MIN_PARTS = 3;
+
+/**
+ * Index of the source node id inside `kind:from:to[:label]` edge ids.
+ *
+ * VALUE: Keeps replay edge parsing explicit and resilient to labels containing
+ * extra `:` characters after the target id.
+ */
+const GRAPH_EDGE_ID_FROM_INDEX = 1;
+
+/**
+ * Index of the target node id inside `kind:from:to[:label]` edge ids.
+ *
+ * VALUE: Keeps replay edge parsing explicit and resilient to labels containing
+ * extra `:` characters after the target id.
+ */
+const GRAPH_EDGE_ID_TO_INDEX = 2;
+
 @Component({
   selector: "mr-graph-canvas",
   templateUrl: "./graph-canvas.component.html",
@@ -293,14 +378,6 @@ export class GraphCanvasComponent implements AfterViewInit {
     return Math.max(0.02, Math.min(0.16, 0.18 - (scale - 1.0) * 0.08));
   });
 
-  protected readonly runComplete = computed(() => {
-    const ns = this.nodes();
-    if (ns.length === 0) return false;
-    const hasExecuted = ns.some((n) => n.status === 'complete' || n.status === 'failed' || n.status === 'skipped');
-    const anyRunning = ns.some((n) => n.status === 'running');
-    return hasExecuted && !anyRunning;
-  });
-
   /** Execution nodes to render. The host owns their lifecycle and status. */
   readonly nodes = input.required<MermaidRuntime.Node[]>();
 
@@ -318,6 +395,23 @@ export class GraphCanvasComponent implements AfterViewInit {
 
   /** The node to mark as the live "current" focus, if any. */
   readonly currentNodeId = input<string | null>(null);
+
+  /**
+   * Whether the graph is currently showing a timeline replay.
+   *
+   * VALUE: Lets the canvas suppress live execution pulses while the replay layer
+   * owns one-shot node and edge motion.
+   */
+  readonly replayActive = input<boolean>(false);
+
+  /**
+   * Current timeline event to animate during replay.
+   *
+   * VALUE: Drives sequential replay visuals from the recorded execution events,
+   * including loops and parallel branches, instead of guessing from final node
+   * state.
+   */
+  readonly replayEvent = input<MermaidRuntime.ExecutionEvent | null>(null);
 
   /** Per-node display overrides, keyed by real node id. */
   readonly decorations = input<Record<string, MermaidRuntime.NodeDecoration>>({});
@@ -557,6 +651,15 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   private readonly previousStatuses = new Map<string, string>();
 
+  /** Last replay event key animated by the canvas. */
+  private lastReplayEventKey: string | null = null;
+
+  /** Pending animation frame used to wait for Mermaid DOM updates before replay paint. */
+  private replayAnimationFrame: number | null = null;
+
+  /** Cleanup timer for the current replay node/edge visual. */
+  private replayAnimationTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     const host = this.hostElement.nativeElement;
     const clickListener = (event: MouseEvent) => this.handleChartClick(event);
@@ -569,7 +672,7 @@ export class GraphCanvasComponent implements AfterViewInit {
           if (target.closest("mr-minimap, .mr-minimap")) {
             return false;
           }
-          if (target.closest(".mr-path-animation-overlay-group, .mr-path-flow-line")) {
+          if (target.closest(`.${REPLAY_ANIMATION_OVERLAY_CLASS}, .${REPLAY_EDGE_TRACE_CLASS}`)) {
             return false;
           }
           if (target.closest(".task-graph-node-progress-wrap")) {
@@ -591,6 +694,8 @@ export class GraphCanvasComponent implements AfterViewInit {
       host.removeEventListener("dblclick", dblClickListener, true);
       host.removeEventListener("contextmenu", contextMenuListener, true);
       chartObserver.disconnect();
+      this.clearReplayAnimationFrame();
+      this.clearReplayAnimationTimer();
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
@@ -608,6 +713,8 @@ export class GraphCanvasComponent implements AfterViewInit {
     effect(() => {
       this.statusKey();
       this.currentNodeId();
+      this.replayActive();
+      this.replayEvent();
       this.effectiveStatusStyles();
       this.graphStack();
       this.scheduleStatusClasses();
@@ -638,6 +745,13 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.currentNodeId();
       this.runningKey();
       this.scheduleFollow();
+    });
+
+    effect(() => {
+      const replayActive = this.replayActive();
+      const replayEvent = this.replayEvent();
+      this.graphStack();
+      this.scheduleReplayEventAnimation(replayActive, replayEvent);
     });
   }
 
@@ -1057,8 +1171,13 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   private applyStatusClasses(): void {
     const currentId = this.currentNodeId();
+    const suppressLivePulses = this.replayActive();
     const styles = this.effectiveStatusStyles();
     const stripClasses = [...this.statusClassNames(), CURRENT_NODE_CLASS, HAS_SUBGRAPH_CLASS];
+
+    if (suppressLivePulses) {
+      this.clearEdgePulseClasses();
+    }
 
     // Clean up stale nodes from previousStatuses map (e.g. after subgraph navigation)
     const activeIds = new Set(this.activeNodes().map((n) => n.id));
@@ -1079,7 +1198,7 @@ export class GraphCanvasComponent implements AfterViewInit {
 
       // Detect transitions and trigger the generic pulse animations
       const prevStatus = this.previousStatuses.get(node.id);
-      if (prevStatus !== undefined && prevStatus !== node.status) {
+      if (!suppressLivePulses && prevStatus !== undefined && prevStatus !== node.status) {
         if (statusClass) {
           this.triggerNodePulse(node.id);
           this.triggerIncomingEdgesPulse(node.id, statusClass);
@@ -1089,8 +1208,6 @@ export class GraphCanvasComponent implements AfterViewInit {
     }
     // Keep connection lines styled based on target node states
     this.applyEdgeStatusClasses();
-    // Apply dynamic trace flow animations on completed run
-    this.updatePathAnimations();
   }
 
   /**
@@ -1148,6 +1265,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     const styles = this.effectiveStatusStyles();
     const nodes = this.activeNodes();
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const suppressRunningEdgeAnimation = this.replayActive();
 
     // Clean up any old edge status classes first from the flowchart link paths
     for (const edgeEl of host.querySelectorAll(".mermaid .flowchart-link")) {
@@ -1176,7 +1294,7 @@ export class GraphCanvasComponent implements AfterViewInit {
         if (!edgeEl) continue;
 
         const statusClass = styles[childNode.status]?.className;
-        if (statusClass) {
+        if (statusClass && !(suppressRunningEdgeAnimation && childNode.status === "running")) {
           edgeEl.classList.add(`edge-status--${statusClass}`);
         }
       }
@@ -1239,7 +1357,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    * VALUE: Direct query targeting of path elements via data-id and id attributes, bypassing
    * Mermaid's auto-generated unique ID suffixes.
    */
-  private findEdgeElement(parentAlias: string, childAlias: string): HTMLElement | null {
+  private findEdgeElement(parentAlias: string, childAlias: string): Element | null {
     const host = this.hostElement.nativeElement;
     return host.querySelector(`.mermaid [data-id^="L_${parentAlias}_${childAlias}_"]`) ?? host.querySelector(`.mermaid [id*="-L_${parentAlias}_${childAlias}_"]`) ?? null;
   }
@@ -1667,179 +1785,250 @@ export class GraphCanvasComponent implements AfterViewInit {
   }
 
   /**
-   * Traverses completed paths and draws animating trace overlays.
+   * Remove transient live execution pulse classes from Mermaid edge paths.
+   *
+   * PURPOSE: Replay owns its own overlay animation and should not reuse the live
+   * execution pulse classes.
+   *
+   * VALUE: The base graph lines remain stable while replay paints a separate
+   * current-event trace above them.
    */
-  private updatePathAnimations(): void {
+  private clearEdgePulseClasses(): void {
     const host = this.hostElement.nativeElement;
-    const svgEl = host.querySelector('.mermaid svg');
-    if (!svgEl) return;
-
-    let overlayGroup = svgEl.querySelector('.mr-path-animation-overlay-group');
-
-    if (!this.runComplete()) {
-      if (overlayGroup) {
-        overlayGroup.innerHTML = '';
+    for (const edgeEl of host.querySelectorAll(".mermaid .flowchart-link")) {
+      const toRemove: string[] = [];
+      for (let i = 0; i < edgeEl.classList.length; i++) {
+        const cls = edgeEl.classList[i];
+        if (cls.startsWith("edge-pulse--")) {
+          toRemove.push(cls);
+        }
       }
+      if (toRemove.length > 0) {
+        edgeEl.classList.remove(...toRemove);
+      }
+    }
+  }
+
+  /**
+   * Schedule the visual for the current replay event after DOM status updates land.
+   *
+   * PURPOSE: Replay animation is event-driven, so each tick paints exactly one
+   * node flash or edge trace.
+   *
+   * VALUE: The completed graph never enters an all-animated final state, and the
+   * overlay follows the recorded sequence including loops and parallel branches.
+   */
+  private scheduleReplayEventAnimation(replayActive: boolean, replayEvent: MermaidRuntime.ExecutionEvent | null): void {
+    if (!replayActive) {
+      this.lastReplayEventKey = null;
+      this.clearReplayAnimationFrame();
+      this.clearReplayEventVisuals();
       return;
     }
 
-    if (overlayGroup) {
-      overlayGroup.innerHTML = '';
-    } else {
-      overlayGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      overlayGroup.setAttribute('class', 'mr-path-animation-overlay-group');
-      const innerG = svgEl.querySelector('g.output') || svgEl.querySelector('g') || svgEl;
-      innerG.appendChild(overlayGroup);
+    const eventKey = replayEvent ? this.buildReplayEventKey(replayEvent) : null;
+    if (eventKey === this.lastReplayEventKey) return;
+    this.lastReplayEventKey = eventKey;
+
+    this.clearReplayAnimationFrame();
+    this.clearReplayEventVisuals();
+    if (!replayEvent) return;
+
+    this.replayAnimationFrame = requestAnimationFrame(() => {
+      this.replayAnimationFrame = null;
+      this.playReplayEventAnimation(replayEvent);
+    });
+  }
+
+  /**
+   * Build a stable identity for one replay event.
+   *
+   * PURPOSE: Avoid repainting the same event when unrelated signal effects run.
+   *
+   * VALUE: Replay visuals advance once per timeline sequence entry.
+   */
+  private buildReplayEventKey(event: MermaidRuntime.ExecutionEvent): string {
+    return `${event.seq}:${event.kind}:${event.nodeId ?? ""}:${event.edgeId ?? ""}`;
+  }
+
+  /**
+   * Paint the visual for the current replay event.
+   *
+   * PURPOSE: Route each timeline event kind to its matching one-shot animation.
+   *
+   * VALUE: Node events flash nodes; edge traversal events draw a temporary trace
+   * over Mermaid's exact edge path.
+   */
+  private playReplayEventAnimation(event: MermaidRuntime.ExecutionEvent): void {
+    if (event.kind === "node-started" && event.nodeId) {
+      this.flashReplayNode(event.nodeId);
+    } else if (event.kind === "edge-traversed") {
+      const edge = this.resolveReplayEdge(event);
+      if (edge) this.traceReplayEdge(edge);
     }
 
-    const nodes = this.activeNodes();
-    const visited = new Set(
-      nodes
-        .filter((n) => n.status === 'complete' || n.status === 'failed' || n.status === 'skipped')
-        .map((n) => n.id)
-    );
+    this.replayAnimationTimer = setTimeout(() => this.clearReplayEventVisuals(), REPLAY_EVENT_CLEAR_DELAY_MS);
+  }
 
-    if (visited.size === 0) return;
+  /**
+   * Resolve a replay event's edge from its stable graph-execution edge id.
+   *
+   * PURPOSE: Decode the daemon's `kind:from:to[:label]` edge identity without
+   * relying on final node state.
+   *
+   * VALUE: Loop backs, repeated traversals, and parallel branches animate in the
+   * exact order they were recorded.
+   */
+  private resolveReplayEdge(event: MermaidRuntime.ExecutionEvent): GraphEdge | null {
+    const edgeId = event.edgeId;
+    if (!edgeId) return null;
 
+    const parts = edgeId.split(":");
+    if (parts.length < GRAPH_EDGE_ID_MIN_PARTS) return null;
+
+    const from = parts[GRAPH_EDGE_ID_FROM_INDEX];
+    const to = parts[GRAPH_EDGE_ID_TO_INDEX];
+    if (!from || !to) return null;
+
+    return { from, to };
+  }
+
+  /**
+   * Flash one node for the active replay event.
+   *
+   * PURPOSE: Give node execution a short surface-sheen effect without changing
+   * the node's persistent status styling.
+   *
+   * VALUE: Replay reads as a sequence of current events rather than a completed
+   * graph blinking forever.
+   */
+  private flashReplayNode(nodeId: string): void {
+    const element = this.findNodeElement(nodeId);
+    if (!element) return;
+
+    element.classList.remove(REPLAY_NODE_FLASH_CLASS);
+    void (element as HTMLElement).offsetWidth;
+    element.classList.add(REPLAY_NODE_FLASH_CLASS);
+    setTimeout(() => element.classList.remove(REPLAY_NODE_FLASH_CLASS), REPLAY_NODE_FLASH_DURATION_MS);
+  }
+
+  /**
+   * Draw a temporary trace over the current replay edge.
+   *
+   * PURPOSE: Reuse Mermaid's own edge route instead of reconstructing geometry
+   * from node positions.
+   *
+   * VALUE: The replay path follows the exact rendered connector and avoids the
+   * top-left origin collapse caused by assembled SVG path data.
+   */
+  private traceReplayEdge(edge: GraphEdge): void {
     const { toAlias } = this.aliasMap();
-    const transitions = this.resolveEdges();
-    const adj = new Map<string, string[]>();
-    const inDegree = new Map<string, number>();
+    const parentAlias = toAlias.get(edge.from);
+    const childAlias = toAlias.get(edge.to);
+    if (!parentAlias || !childAlias) return;
 
-    for (const t of transitions) {
-      if (visited.has(t.from) && visited.has(t.to)) {
-        if (!adj.has(t.from)) adj.set(t.from, []);
-        adj.get(t.from)!.push(t.to);
-        inDegree.set(t.to, (inDegree.get(t.to) || 0) + 1);
-      }
+    const edgeElement = this.findEdgeElement(parentAlias, childAlias);
+    const pathElement = this.findEdgePathElement(edgeElement);
+    const pathData = pathElement?.getAttribute("d");
+    const overlayGroup = this.getReplayOverlayGroup();
+    if (!pathData || !overlayGroup) return;
+
+    const tracePath = document.createElementNS(SVG_NAMESPACE, "path");
+    tracePath.setAttribute("d", pathData);
+    tracePath.setAttribute("pathLength", REPLAY_EDGE_TRACE_PATH_LENGTH);
+    tracePath.classList.add(REPLAY_EDGE_TRACE_CLASS);
+    overlayGroup.append(tracePath);
+  }
+
+  /**
+   * Resolve the actual SVG path inside a Mermaid edge element.
+   *
+   * PURPOSE: Mermaid may return either the path itself or a wrapper, depending on
+   * render version and selector match.
+   *
+   * VALUE: Replay tracing always copies from the real connector path.
+   */
+  private findEdgePathElement(edgeElement: Element | null): SVGPathElement | null {
+    if (edgeElement instanceof SVGPathElement) return edgeElement;
+    const childPath = edgeElement?.querySelector("path");
+    return childPath instanceof SVGPathElement ? childPath : null;
+  }
+
+  /**
+   * Get or create the replay overlay group inside Mermaid's SVG.
+   *
+   * PURPOSE: Keep transient replay paths in the same SVG coordinate space as the
+   * rendered graph.
+   *
+   * VALUE: Cloned edge path data lands on top of the graph without touching the
+   * original Mermaid edge elements.
+   */
+  private getReplayOverlayGroup(): SVGGElement | null {
+    const svgElement = this.hostElement.nativeElement.querySelector(".mermaid svg");
+    if (!(svgElement instanceof SVGSVGElement)) return null;
+
+    const existing = svgElement.querySelector(`.${REPLAY_ANIMATION_OVERLAY_CLASS}`);
+    if (existing instanceof SVGGElement) return existing;
+
+    const overlayGroup = document.createElementNS(SVG_NAMESPACE, "g");
+    overlayGroup.classList.add(REPLAY_ANIMATION_OVERLAY_CLASS);
+    const rootGroup = svgElement.querySelector("g.output") ?? svgElement.querySelector("g") ?? svgElement;
+    rootGroup.append(overlayGroup);
+    return overlayGroup;
+  }
+
+  /**
+   * Remove current replay event visuals from the graph.
+   *
+   * PURPOSE: Ensure each replay step starts from a clean overlay.
+   *
+   * VALUE: Only the active timeline event animates; previous traces do not build
+   * up or leave the main graph altered.
+   */
+  private clearReplayEventVisuals(): void {
+    this.clearReplayAnimationTimer();
+    this.clearReplayAnimationOverlay();
+    for (const nodeElement of this.hostElement.nativeElement.querySelectorAll(`.mermaid .node.${REPLAY_NODE_FLASH_CLASS}`)) {
+      nodeElement.classList.remove(REPLAY_NODE_FLASH_CLASS);
     }
+  }
 
-    const roots = Array.from(visited).filter((id) => !inDegree.has(id));
-    const paths: string[][] = [];
-    const currentPath: string[] = [];
+  /**
+   * Remove the replay SVG overlay group.
+   *
+   * PURPOSE: Clean up transient paths without touching Mermaid's generated graph.
+   *
+   * VALUE: Replay can stop or advance without leaving extra SVG elements behind.
+   */
+  private clearReplayAnimationOverlay(): void {
+    this.hostElement.nativeElement.querySelector(`.mermaid .${REPLAY_ANIMATION_OVERLAY_CLASS}`)?.remove();
+  }
 
-    const dfs = (nodeId: string, pathVisited: Set<string>) => {
-      if (pathVisited.has(nodeId)) {
-        paths.push([...currentPath]);
-        return;
-      }
-      pathVisited.add(nodeId);
-      currentPath.push(nodeId);
+  /**
+   * Cancel a queued replay animation frame.
+   *
+   * PURPOSE: Prevent stale event animations from painting after replay stops or
+   * a newer event arrives.
+   *
+   * VALUE: Fast scrubbing cannot paint an out-of-date node or edge after the
+   * selected sequence changes.
+   */
+  private clearReplayAnimationFrame(): void {
+    if (this.replayAnimationFrame === null) return;
+    cancelAnimationFrame(this.replayAnimationFrame);
+    this.replayAnimationFrame = null;
+  }
 
-      const next = adj.get(nodeId) || [];
-      if (next.length === 0) {
-        paths.push([...currentPath]);
-      } else {
-        for (const n of next) {
-          dfs(n, pathVisited);
-        }
-      }
-
-      currentPath.pop();
-      pathVisited.delete(nodeId);
-    };
-
-    for (const root of roots) {
-      dfs(root, new Set<string>());
-    }
-
-    for (const path of paths) {
-      if (path.length === 0) continue;
-
-      let pathD = '';
-      let prevEnd: { x: number; y: number } | null = null;
-
-      for (let i = 0; i < path.length - 1; i++) {
-        const fromNode = path[i];
-        const toNode = path[i + 1];
-
-        const parentAlias = toAlias.get(fromNode);
-        const childAlias = toAlias.get(toNode);
-        if (!parentAlias || !childAlias) continue;
-
-        const edgeEl = this.findEdgeElement(parentAlias, childAlias);
-        if (!edgeEl) continue;
-
-        const pathEl = edgeEl.tagName.toLowerCase() === 'path'
-          ? (edgeEl as unknown as SVGPathElement)
-          : edgeEl.querySelector('path');
-
-        if (!pathEl) continue;
-
-        const d = pathEl.getAttribute('d') || '';
-        const len = pathEl.getTotalLength();
-        const pStart = pathEl.getPointAtLength(0);
-        const pEnd = pathEl.getPointAtLength(len);
-
-        const cleanD = d.trim().replace(/^M\s*[\d.-]+[\s,]+[\d.-]+/i, '');
-
-        if (pathD === '') {
-          pathD = d;
-        } else if (prevEnd) {
-          pathD += ` L ${pStart.x} ${pStart.y} ${cleanD}`;
-        }
-
-        if (i + 1 < path.length - 1) {
-          const nextNode = path[i + 2];
-          const nextParentAlias = toAlias.get(toNode);
-          const nextChildAlias = toAlias.get(nextNode);
-          const nextEdgeEl = nextParentAlias && nextChildAlias
-            ? this.findEdgeElement(nextParentAlias, nextChildAlias)
-            : null;
-
-          const nextPathEl = nextEdgeEl
-            ? (nextEdgeEl.tagName.toLowerCase() === 'path'
-              ? (nextEdgeEl as unknown as SVGPathElement)
-              : nextEdgeEl.querySelector('path'))
-            : null;
-
-          if (nextPathEl) {
-            const pNextStart = nextPathEl.getPointAtLength(0);
-            const nodeEl = this.findNodeElement(toNode);
-            if (nodeEl) {
-              const bbox = (nodeEl as any).getBBox();
-              const transform = nodeEl.getAttribute('transform') || '';
-              const m = /translate\(([^,)]+)(?:[\s,]+([^)]+))?\)/.exec(transform);
-              const cx = m ? parseFloat(m[1]) : 0;
-              const cy = m && m[2] ? parseFloat(m[2]) : 0;
-              const nodeBox = { x: cx + bbox.x, y: cy + bbox.y, w: bbox.width, h: bbox.height };
-
-              const offset = 8;
-              const yTop = nodeBox.y - offset;
-              const xLeft = nodeBox.x - offset;
-
-              const isHorizontal = Math.abs(pNextStart.x - pEnd.x) > Math.abs(pNextStart.y - pEnd.y);
-
-              if (isHorizontal) {
-                const cornerX1 = pEnd.x < cx ? nodeBox.x - offset : nodeBox.x + nodeBox.w + offset;
-                const cornerY1 = yTop;
-                const cornerX2 = pNextStart.x > cx ? nodeBox.x + nodeBox.w + offset : nodeBox.x - offset;
-                const cornerY2 = yTop;
-
-                pathD += ` Q ${cornerX1} ${pEnd.y} ${cornerX1} ${cornerY1} L ${cornerX2} ${cornerY2} Q ${cornerX2} ${pNextStart.y} ${pNextStart.x} ${pNextStart.y}`;
-              } else {
-                const cornerX1 = xLeft;
-                const cornerY1 = pEnd.y < cy ? nodeBox.y - offset : nodeBox.y + nodeBox.h + offset;
-                const cornerX2 = xLeft;
-                const cornerY2 = pNextStart.y > cy ? nodeBox.y + nodeBox.h + offset : nodeBox.y - offset;
-
-                pathD += ` Q ${pEnd.x} ${cornerY1} ${cornerX1} ${cornerY1} L ${cornerX2} ${cornerY2} Q ${pNextStart.x} ${cornerY2} ${pNextStart.x} ${pNextStart.y}`;
-              }
-              prevEnd = pNextStart;
-            }
-          }
-        } else {
-          prevEnd = pEnd;
-        }
-      }
-
-      if (pathD !== '') {
-        const svgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        svgPath.setAttribute('d', pathD);
-        svgPath.setAttribute('class', 'mr-path-flow-line');
-        svgPath.setAttribute('pathLength', '100');
-        overlayGroup.appendChild(svgPath);
-      }
-    }
+  /**
+   * Clear the replay visual cleanup timer.
+   *
+   * PURPOSE: Avoid overlapping cleanup timers while the user scrubs quickly.
+   *
+   * VALUE: The latest replay event controls the overlay lifecycle.
+   */
+  private clearReplayAnimationTimer(): void {
+    if (this.replayAnimationTimer === null) return;
+    clearTimeout(this.replayAnimationTimer);
+    this.replayAnimationTimer = null;
   }
 }
