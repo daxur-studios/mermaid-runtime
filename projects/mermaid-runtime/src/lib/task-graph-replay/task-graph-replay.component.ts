@@ -146,7 +146,7 @@ export class TaskGraphReplayComponent {
   }
 
   // Playback Control Actions
-  protected startReplay(): void {
+  public startReplay(): void {
     this.clearReplayTimer();
     this.resetProgress();
     this.currentSeq.set(0);
@@ -155,7 +155,7 @@ export class TaskGraphReplayComponent {
     this.runPlayback();
   }
 
-  protected stopReplay(): void {
+  public stopReplay(): void {
     this.clearReplayTimer();
     this.isPlaying.set(false);
     this.isReplaying.set(false);

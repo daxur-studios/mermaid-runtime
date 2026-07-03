@@ -276,6 +276,31 @@ export class GraphCanvasComponent implements AfterViewInit {
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
   private readonly viewportRef = viewChild.required<ElementRef<HTMLElement>>("viewport");
 
+  protected readonly cameraState = computed(() => {
+    const cameraComp = this.cameraRef();
+    return cameraComp ? cameraComp.cameraState() : { x: 0, y: 0, scale: 1.0 };
+  });
+
+  protected readonly smallDotOpacity = computed(() => {
+    const scale = this.cameraState().scale;
+    // Keep dots visible down to 0.22 zoom, and increase their max visibility
+    return Math.max(0, Math.min(0.25, (scale - 0.22) * 0.45));
+  });
+
+  protected readonly largeGridOpacity = computed(() => {
+    const scale = this.cameraState().scale;
+    // Increase grid line opacity (up to 0.16) and fade out slower
+    return Math.max(0.02, Math.min(0.16, 0.18 - (scale - 1.0) * 0.08));
+  });
+
+  protected readonly runComplete = computed(() => {
+    const ns = this.nodes();
+    if (ns.length === 0) return false;
+    const hasExecuted = ns.some((n) => n.status === 'complete' || n.status === 'failed' || n.status === 'skipped');
+    const anyRunning = ns.some((n) => n.status === 'running');
+    return hasExecuted && !anyRunning;
+  });
+
   /** Execution nodes to render. The host owns their lifecycle and status. */
   readonly nodes = input.required<MermaidRuntime.Node[]>();
 
@@ -542,6 +567,12 @@ export class GraphCanvasComponent implements AfterViewInit {
         const target = m.target;
         if (target instanceof Element) {
           if (target.closest("mr-minimap, .mr-minimap")) {
+            return false;
+          }
+          if (target.closest(".mr-path-animation-overlay-group, .mr-path-flow-line")) {
+            return false;
+          }
+          if (target.closest(".task-graph-node-progress-wrap")) {
             return false;
           }
         }
@@ -1058,6 +1089,8 @@ export class GraphCanvasComponent implements AfterViewInit {
     }
     // Keep connection lines styled based on target node states
     this.applyEdgeStatusClasses();
+    // Apply dynamic trace flow animations on completed run
+    this.updatePathAnimations();
   }
 
   /**
@@ -1631,5 +1664,182 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Shallow ordered equality for two node-id paths. */
   private samePath(a: readonly string[], b: readonly string[]): boolean {
     return a.length === b.length && a.every((value, index) => value === b[index]);
+  }
+
+  /**
+   * Traverses completed paths and draws animating trace overlays.
+   */
+  private updatePathAnimations(): void {
+    const host = this.hostElement.nativeElement;
+    const svgEl = host.querySelector('.mermaid svg');
+    if (!svgEl) return;
+
+    let overlayGroup = svgEl.querySelector('.mr-path-animation-overlay-group');
+
+    if (!this.runComplete()) {
+      if (overlayGroup) {
+        overlayGroup.innerHTML = '';
+      }
+      return;
+    }
+
+    if (overlayGroup) {
+      overlayGroup.innerHTML = '';
+    } else {
+      overlayGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      overlayGroup.setAttribute('class', 'mr-path-animation-overlay-group');
+      const innerG = svgEl.querySelector('g.output') || svgEl.querySelector('g') || svgEl;
+      innerG.appendChild(overlayGroup);
+    }
+
+    const nodes = this.activeNodes();
+    const visited = new Set(
+      nodes
+        .filter((n) => n.status === 'complete' || n.status === 'failed' || n.status === 'skipped')
+        .map((n) => n.id)
+    );
+
+    if (visited.size === 0) return;
+
+    const { toAlias } = this.aliasMap();
+    const transitions = this.resolveEdges();
+    const adj = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+
+    for (const t of transitions) {
+      if (visited.has(t.from) && visited.has(t.to)) {
+        if (!adj.has(t.from)) adj.set(t.from, []);
+        adj.get(t.from)!.push(t.to);
+        inDegree.set(t.to, (inDegree.get(t.to) || 0) + 1);
+      }
+    }
+
+    const roots = Array.from(visited).filter((id) => !inDegree.has(id));
+    const paths: string[][] = [];
+    const currentPath: string[] = [];
+
+    const dfs = (nodeId: string, pathVisited: Set<string>) => {
+      if (pathVisited.has(nodeId)) {
+        paths.push([...currentPath]);
+        return;
+      }
+      pathVisited.add(nodeId);
+      currentPath.push(nodeId);
+
+      const next = adj.get(nodeId) || [];
+      if (next.length === 0) {
+        paths.push([...currentPath]);
+      } else {
+        for (const n of next) {
+          dfs(n, pathVisited);
+        }
+      }
+
+      currentPath.pop();
+      pathVisited.delete(nodeId);
+    };
+
+    for (const root of roots) {
+      dfs(root, new Set<string>());
+    }
+
+    for (const path of paths) {
+      if (path.length === 0) continue;
+
+      let pathD = '';
+      let prevEnd: { x: number; y: number } | null = null;
+
+      for (let i = 0; i < path.length - 1; i++) {
+        const fromNode = path[i];
+        const toNode = path[i + 1];
+
+        const parentAlias = toAlias.get(fromNode);
+        const childAlias = toAlias.get(toNode);
+        if (!parentAlias || !childAlias) continue;
+
+        const edgeEl = this.findEdgeElement(parentAlias, childAlias);
+        if (!edgeEl) continue;
+
+        const pathEl = edgeEl.tagName.toLowerCase() === 'path'
+          ? (edgeEl as unknown as SVGPathElement)
+          : edgeEl.querySelector('path');
+
+        if (!pathEl) continue;
+
+        const d = pathEl.getAttribute('d') || '';
+        const len = pathEl.getTotalLength();
+        const pStart = pathEl.getPointAtLength(0);
+        const pEnd = pathEl.getPointAtLength(len);
+
+        const cleanD = d.trim().replace(/^M\s*[\d.-]+[\s,]+[\d.-]+/i, '');
+
+        if (pathD === '') {
+          pathD = d;
+        } else if (prevEnd) {
+          pathD += ` L ${pStart.x} ${pStart.y} ${cleanD}`;
+        }
+
+        if (i + 1 < path.length - 1) {
+          const nextNode = path[i + 2];
+          const nextParentAlias = toAlias.get(toNode);
+          const nextChildAlias = toAlias.get(nextNode);
+          const nextEdgeEl = nextParentAlias && nextChildAlias
+            ? this.findEdgeElement(nextParentAlias, nextChildAlias)
+            : null;
+
+          const nextPathEl = nextEdgeEl
+            ? (nextEdgeEl.tagName.toLowerCase() === 'path'
+              ? (nextEdgeEl as unknown as SVGPathElement)
+              : nextEdgeEl.querySelector('path'))
+            : null;
+
+          if (nextPathEl) {
+            const pNextStart = nextPathEl.getPointAtLength(0);
+            const nodeEl = this.findNodeElement(toNode);
+            if (nodeEl) {
+              const bbox = (nodeEl as any).getBBox();
+              const transform = nodeEl.getAttribute('transform') || '';
+              const m = /translate\(([^,)]+)(?:[\s,]+([^)]+))?\)/.exec(transform);
+              const cx = m ? parseFloat(m[1]) : 0;
+              const cy = m && m[2] ? parseFloat(m[2]) : 0;
+              const nodeBox = { x: cx + bbox.x, y: cy + bbox.y, w: bbox.width, h: bbox.height };
+
+              const offset = 8;
+              const yTop = nodeBox.y - offset;
+              const xLeft = nodeBox.x - offset;
+
+              const isHorizontal = Math.abs(pNextStart.x - pEnd.x) > Math.abs(pNextStart.y - pEnd.y);
+
+              if (isHorizontal) {
+                const cornerX1 = pEnd.x < cx ? nodeBox.x - offset : nodeBox.x + nodeBox.w + offset;
+                const cornerY1 = yTop;
+                const cornerX2 = pNextStart.x > cx ? nodeBox.x + nodeBox.w + offset : nodeBox.x - offset;
+                const cornerY2 = yTop;
+
+                pathD += ` Q ${cornerX1} ${pEnd.y} ${cornerX1} ${cornerY1} L ${cornerX2} ${cornerY2} Q ${cornerX2} ${pNextStart.y} ${pNextStart.x} ${pNextStart.y}`;
+              } else {
+                const cornerX1 = xLeft;
+                const cornerY1 = pEnd.y < cy ? nodeBox.y - offset : nodeBox.y + nodeBox.h + offset;
+                const cornerX2 = xLeft;
+                const cornerY2 = pNextStart.y > cy ? nodeBox.y + nodeBox.h + offset : nodeBox.y - offset;
+
+                pathD += ` Q ${pEnd.x} ${cornerY1} ${cornerX1} ${cornerY1} L ${cornerX2} ${cornerY2} Q ${pNextStart.x} ${cornerY2} ${pNextStart.x} ${pNextStart.y}`;
+              }
+              prevEnd = pNextStart;
+            }
+          }
+        } else {
+          prevEnd = pEnd;
+        }
+      }
+
+      if (pathD !== '') {
+        const svgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        svgPath.setAttribute('d', pathD);
+        svgPath.setAttribute('class', 'mr-path-flow-line');
+        svgPath.setAttribute('pathLength', '100');
+        overlayGroup.appendChild(svgPath);
+      }
+    }
   }
 }

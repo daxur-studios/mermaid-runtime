@@ -25,6 +25,49 @@
   position: relative;
   min-width: 0;
   min-height: inherit;
+
+  // Dynamic 2-layer grid and dot pattern background
+  background-color: var(--mat-sys-surface, #0f0b21);
+  background-image:
+    // Large grid lines (spacing: 120px)
+    linear-gradient(to right, rgba(139, 92, 246, var(--large-grid-opacity, 0.08)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(139, 92, 246, var(--large-grid-opacity, 0.08)) 1px, transparent 1px),
+    // Small dots (spacing: 30px)
+    radial-gradient(circle, rgba(0, 240, 255, var(--small-dot-opacity, 0.15)) 1px, transparent 1px);
+
+  background-size:
+    calc(120px * var(--zoom-scale, 1)) calc(120px * var(--zoom-scale, 1)),
+    calc(120px * var(--zoom-scale, 1)) calc(120px * var(--zoom-scale, 1)),
+    calc(30px * var(--zoom-scale, 1)) calc(30px * var(--zoom-scale, 1));
+
+  background-position:
+    var(--pan-x, 0px) var(--pan-y, 0px),
+    var(--pan-x, 0px) var(--pan-y, 0px),
+    var(--pan-x, 0px) var(--pan-y, 0px);
+}
+
+// Path flow animation lines (for trace replay loop)
+:host ::ng-deep .mr-path-flow-line {
+  fill: none;
+  stroke: #00f0ff; // Sleek glowing cyan
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 20 80;
+  stroke-dashoffset: 100;
+  animation: mr-path-flow-animation 3.5s linear infinite;
+  opacity: 0.75;
+  filter: drop-shadow(0 0 2.5px rgba(0, 240, 255, 0.5));
+  pointer-events: none;
+}
+
+@keyframes mr-path-flow-animation {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .graph-canvas__camera {

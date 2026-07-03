@@ -1,5 +1,13 @@
 <div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()">
-  <div class="graph-canvas__viewport" #viewport>
+  <div
+    class="graph-canvas__viewport"
+    #viewport
+    [style.--zoom-scale]="cameraState().scale"
+    [style.--pan-x.px]="cameraState().x"
+    [style.--pan-y.px]="cameraState().y"
+    [style.--small-dot-opacity]="smallDotOpacity()"
+    [style.--large-grid-opacity]="largeGridOpacity()"
+  >
     <mr-graph-camera
       class="graph-canvas__camera"
       (userInteract)="onUserInteract()"
