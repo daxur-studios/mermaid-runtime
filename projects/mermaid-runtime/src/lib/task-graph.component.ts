@@ -134,6 +134,9 @@ export class TaskGraphComponent {
   /** Whether to render the corner minimap overlay. */
   readonly showMinimap = input<boolean>(true);
 
+  /** Whether the minimap renders built-in, or is suppressed for a host-rendered `<mr-minimap>`. */
+  readonly minimapPlacement = input<'built-in' | 'host'>('built-in');
+
   /**
    * Resolves a node's child graph. When omitted, the node's inline
    * `subgraph` is used.

@@ -442,6 +442,16 @@ export class GraphCanvasComponent implements AfterViewInit {
   readonly showMinimap = input<boolean>(true);
 
   /**
+   * Whether the minimap renders in its own built-in corner, or is suppressed so a host can
+   * render `<mr-minimap>` itself (bound to `minimapContentRect`/`minimapViewportRect`/
+   * `minimapNodes`/`centerOnPoint`) inside its own shared overlay layer instead.
+   *
+   * VALUE: lets a host app relocate the minimap without the library needing to know anything
+   * about where a host's layout system wants it placed.
+   */
+  readonly minimapPlacement = input<'built-in' | 'host'>('built-in');
+
+  /**
    * Whether a host has projected `[detail]` chrome — toggles the side column.
    *
    * VALUE: Lets the canvas reserve layout space for a projected inspector without

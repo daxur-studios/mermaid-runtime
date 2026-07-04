@@ -48,7 +48,7 @@
     <!-- Host-supplied viewport overlays (extra controls, minimap, legends). -->
     <ng-content select="[overlay]"></ng-content>
 
-    @if (showMinimap()) {
+    @if (showMinimap() && minimapPlacement() === 'built-in') {
       <mr-minimap
         [contentRect]="minimapContentRect()"
         [viewportRect]="minimapViewportRect()"
