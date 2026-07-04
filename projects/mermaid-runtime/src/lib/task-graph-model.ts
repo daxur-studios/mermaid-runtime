@@ -17,6 +17,17 @@
  */
 export namespace MermaidRuntime {
   /**
+   * Host theme family used to choose Mermaid's built-in render theme.
+   *
+   * PURPOSE: Keep the runtime independent from any one app's theme service while
+   * still letting hosts tell the graph renderer whether it sits on a light or dark surface.
+   *
+   * VALUE: Daxur and other hosts can theme Mermaid output with one stable input, and
+   * future custom themes can map down to the same light/dark contrast family.
+   */
+  export type MermaidThemeId = 'light' | 'dark';
+
+  /**
    * Execution state of a single graph node.
    *
    * PURPOSE: Drive per-node status colouring without binding the viewer to one

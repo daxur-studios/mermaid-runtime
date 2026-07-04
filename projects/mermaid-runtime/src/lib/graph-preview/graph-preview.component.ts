@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { MermaidRuntime } from '../task-graph-model';
+import type { MermaidRuntimeConfig } from '../mermaid-theme';
 import { GraphPreviewSimpleComponent } from './graph-preview-simple.component';
 import { GraphPreviewMermaidComponent } from './graph-preview-mermaid.component';
 
@@ -14,17 +15,15 @@ import { GraphPreviewMermaidComponent } from './graph-preview-mermaid.component'
 export type GraphPreviewMode = 'simple' | 'mermaid';
 
 /**
- * Standalone, reusable preview of a {@link MermaidRuntime.Graph} — status-coloured and
- * live-updating, with no dependency on the interactive `GraphCanvasComponent`.
+ * Standalone, reusable preview of a {@link MermaidRuntime.Graph}.
  *
  * PURPOSE: Give a node's subgraph, a delegated task's graph, or a kanban card a small thumbnail
- * of "what's inside" without pulling in the full pan/zoom/minimap/drill-down viewer.
+ * of what is inside without pulling in the full pan/zoom/minimap/drill-down viewer.
  *
  * VALUE: A single component a host drops in anywhere, choosing per-instance between the cheap
  * {@link GraphPreviewSimpleComponent} shape and the faithful {@link GraphPreviewMermaidComponent}
- * render via the `mode` input — both read live status straight off the `graph` input, so passing
- * a new graph object on every status tick (the same immutable-data convention already used
- * elsewhere in this library) is all a host needs to do to keep it live.
+ * render via the `mode` input. Both read live status straight off the `graph` input, so passing
+ * a new graph object on every status tick is enough to keep it live.
  */
 @Component({
   selector: 'mr-graph-preview',
@@ -38,9 +37,20 @@ export class GraphPreviewComponent {
   /** Graph to preview (a node's subgraph, a delegated task's graph, or any standalone graph). */
   readonly graph = input.required<MermaidRuntime.Graph>();
 
-  /** Which renderer to use — see {@link GraphPreviewMode}. */
+  /** Which renderer to use - see {@link GraphPreviewMode}. */
   readonly mode = input<GraphPreviewMode>('simple');
 
-  /** Status → visual-treatment overrides, merged over the built-in defaults. */
+  /** Status to visual-treatment overrides, merged over the built-in defaults. */
   readonly statusStyles = input<MermaidRuntime.StatusStyleMap>({});
+
+  /** Contrast family used when the runtime builds its default Mermaid config. */
+  readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>('dark');
+
+  /**
+   * Full Mermaid render config override for hosts that need custom theme variables.
+   *
+   * VALUE: Lets advanced hosts provide `theme: 'base'` and `themeVariables` while
+   * simple hosts use `mermaidTheme` only.
+   */
+  readonly mermaidConfig = input<MermaidRuntimeConfig | null>(null);
 }

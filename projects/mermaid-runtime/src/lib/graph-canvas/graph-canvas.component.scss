@@ -509,7 +509,10 @@
   pointer-events: none;
 }
 
-:host ::ng-deep mr-minimap {
+// Scoped to `.graph-canvas__minimap` so this positioning applies only to the library's own
+// built-in corner placement, not to a host-projected `<mr-minimap>` rendered elsewhere (e.g.
+// inside a host's own overlay layer), which must be positioned by its container instead.
+:host ::ng-deep mr-minimap.graph-canvas__minimap {
   position: absolute;
   right: 12px;
   bottom: 56px;

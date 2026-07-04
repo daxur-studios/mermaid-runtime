@@ -7,6 +7,7 @@ import {
   type SubgraphNavEvent,
 } from './graph-canvas/graph-canvas.component';
 import { GraphInspectorComponent } from './graph-inspector/graph-inspector.component';
+import type { MermaidRuntimeConfig } from './mermaid-theme';
 
 /**
  * Per-node visual override supplied by the host.
@@ -118,6 +119,16 @@ export class TaskGraphComponent {
    */
   readonly statusStyles = input<MermaidRuntime.StatusStyleMap>({});
 
+  /** Contrast family used when the runtime builds its default Mermaid config. */
+  readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>('dark');
+
+  /**
+   * Full Mermaid render config override for hosts that need custom theme variables.
+   *
+   * VALUE: Lets advanced hosts provide `theme: 'base'` and `themeVariables` while
+   * simple hosts use `mermaidTheme` only.
+   */
+  readonly mermaidConfig = input<MermaidRuntimeConfig | null>(null);
   /** Breadcrumb label for the root (top-level) graph. */
   readonly rootLabel = input<string>('Main');
 
@@ -136,6 +147,12 @@ export class TaskGraphComponent {
 
   /** Whether the minimap renders built-in, or is suppressed for a host-rendered `<mr-minimap>`. */
   readonly minimapPlacement = input<'built-in' | 'host'>('built-in');
+
+  /**
+   * Whether the camera's zoom/pan controls render built-in, or are suppressed for a host
+   * rendering its own controls via `canvas().zoomIn()`/`zoomOut()`/`fitAll()`/`resetCamera()`.
+   */
+  readonly cameraControlsPlacement = input<'built-in' | 'host'>('built-in');
 
   /**
    * Resolves a node's child graph. When omitted, the node's inline

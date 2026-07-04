@@ -1,8 +1,8 @@
+// Positioning (position/offsets/z-index/size) is the placing container's job, not this
+// component's — the built-in corner placement lives in graph-canvas.component.scss scoped to
+// `mr-minimap.graph-canvas__minimap`; a host-projected instance is positioned by its own layer
+// (e.g. an overlay lane) instead.
 :host {
-  position: absolute;
-  right: 12px;
-  bottom: 56px;
-  z-index: 2;
   display: block;
   border: 1px solid var(--mat-sys-outline-variant);
   border-radius: 8px;

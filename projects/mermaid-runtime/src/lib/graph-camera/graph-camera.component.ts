@@ -6,6 +6,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   output,
   signal,
   viewChild,
@@ -111,6 +112,16 @@ function isTextSelectionTarget(target: Element): boolean {
 export class GraphCameraComponent {
   private readonly destroyRef = inject(DestroyRef);
 
+  /**
+   * Whether the built-in zoom/pan control cluster renders itself, or is left to a host that
+   * calls `zoomIn()`/`zoomOut()`/`fitAll()`/`reset()` directly from its own overlay layer.
+   *
+   * VALUE: Mirrors `minimapPlacement` on `GraphCanvasComponent` — lets a host relocate the
+   * controls to coordinate with other floating widgets instead of always sitting in the
+   * viewport's own bottom-right corner.
+   */
+  readonly controlsPlacement = input<'built-in' | 'host'>('built-in');
+
   private readonly viewportRef = viewChild.required<ElementRef<HTMLElement>>('viewport');
   private readonly sceneRef = viewChild.required<ElementRef<HTMLElement>>('scene');
 
@@ -202,11 +213,13 @@ export class GraphCameraComponent {
     this.isPanning.set(false);
   }
 
-  protected zoomIn(): void {
+  /** Zoom in one step, centered on the viewport. */
+  zoomIn(): void {
     this.zoomFromCenter(ZOOM_BUTTON_STEP);
   }
 
-  protected zoomOut(): void {
+  /** Zoom out one step, centered on the viewport. */
+  zoomOut(): void {
     this.zoomFromCenter(1 / ZOOM_BUTTON_STEP);
   }
 

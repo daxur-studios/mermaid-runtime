@@ -9,11 +9,14 @@
   [replayEvent]="replayEvent()"
   [decorations]="decorations()"
   [statusStyles]="statusStyles()"
+  [mermaidTheme]="mermaidTheme()"
+  [mermaidConfig]="mermaidConfig()"
   [rootLabel]="rootLabel()"
   [showBreadcrumb]="showBreadcrumb()"
   [showSubgraphPreview]="showSubgraphPreview()"
   [showMinimap]="showMinimap()"
   [minimapPlacement]="minimapPlacement()"
+  [cameraControlsPlacement]="cameraControlsPlacement()"
   [subgraphResolver]="subgraphResolver()"
   [path]="path()"
   [followExecution]="followExecution()"
@@ -24,8 +27,11 @@
   (subgraphLeft)="subgraphLeft.emit($event)"
   (graphPathChange)="graphPathChange.emit($event)"
 >
-  <!-- Host-supplied viewport overlays (extra controls, minimap, legends). -->
-  <ng-content select="[overlay]"></ng-content>
+  <!-- Host-supplied viewport overlays (extra controls, minimap, legends).
+       ngProjectAs is required here: a nested <ng-content> does not itself carry the `overlay`
+       attribute, so without it mr-graph-canvas's own `[overlay]` slot would not match this
+       forwarded content and it would be silently dropped. -->
+  <ng-content select="[overlay]" ngProjectAs="[overlay]"></ng-content>
 
   @if (showInspector()) {
     <mr-graph-inspector

@@ -1,10 +1,11 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from "@angular/core";
 import { CommonModule } from "@angular/common";
-import { MarkdownModule, MermaidAPI } from "ngx-markdown";
+import { MarkdownModule } from "ngx-markdown";
 
 import { MermaidRuntime } from "../task-graph-model";
 import { GraphCameraComponent, type GraphRect } from "../graph-camera/graph-camera.component";
 import { MinimapComponent } from "../minimap/minimap.component";
+import { buildMermaidRuntimeConfig, type MermaidRuntimeConfig } from "../mermaid-theme";
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface GraphEdge {
@@ -185,12 +186,11 @@ const SUBGRAPH_PREVIEW_DETAIL_ZOOM_THRESHOLD = 0.7;
 /**
  * Default Mermaid render configuration for the task graph.
  *
- * Value: Dark theme to match the app, `loose` security so click hrefs render
- * as anchors we can intercept, and a smooth flowchart curve.
+ * Value: Dark remains the default for backwards compatibility; hosts can pass
+ * `mermaidTheme` or `mermaidConfig` to align Mermaid output with their app theme.
  */
-const DEFAULT_MERMAID_OPTIONS: MermaidAPI.MermaidConfig = {
-  theme: "dark",
-  startOnLoad: true,
+const DEFAULT_MERMAID_OPTIONS: MermaidRuntimeConfig = {
+  ...buildMermaidRuntimeConfig("dark", true),
   securityLevel: "loose",
   flowchart: {
     // The camera owns sizing/zoom. `useMaxWidth: false` gives the SVG a fixed
@@ -424,6 +424,16 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   readonly statusStyles = input<MermaidRuntime.StatusStyleMap>({});
 
+  /** Contrast family used when the runtime builds its default Mermaid config. */
+  readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>("dark");
+
+  /**
+   * Full Mermaid render config override for hosts that need custom theme variables.
+   *
+   * VALUE: Lets advanced hosts provide `theme: 'base'` and `themeVariables` while
+   * simple hosts use `mermaidTheme` only.
+   */
+  readonly mermaidConfig = input<MermaidRuntimeConfig | null>(null);
   /** Breadcrumb label for the root (top-level) graph. */
   readonly rootLabel = input<string>("Main");
 
@@ -450,6 +460,16 @@ export class GraphCanvasComponent implements AfterViewInit {
    * about where a host's layout system wants it placed.
    */
   readonly minimapPlacement = input<'built-in' | 'host'>('built-in');
+
+  /**
+   * Whether the camera's zoom/pan control cluster renders in its own built-in corner, or is
+   * suppressed so a host can render its own controls (calling `zoomIn()`/`zoomOut()`/
+   * `fitAll()`/`resetCamera()` on this component) inside its own shared overlay layer instead.
+   *
+   * VALUE: Same seam as `minimapPlacement`, applied to the other piece of built-in viewport
+   * chrome that a host may need to relocate to avoid colliding with a relocated minimap.
+   */
+  readonly cameraControlsPlacement = input<'built-in' | 'host'>('built-in');
 
   /**
    * Whether a host has projected `[detail]` chrome — toggles the side column.
@@ -505,7 +525,9 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   readonly graphPathChange = output<string[]>();
 
-  protected readonly mermaidOptions = DEFAULT_MERMAID_OPTIONS;
+  protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() =>
+    this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? true),
+  );
 
   private readonly internalSelectedNodeId = signal<string | null>(null);
 
@@ -987,6 +1009,29 @@ export class GraphCanvasComponent implements AfterViewInit {
     this.cameraRef().centerOn(point, { animate: false });
   }
 
+  /**
+   * Delegates to the camera for a host rendering its own controls (`cameraControlsPlacement:
+   * 'host'`) — `cameraRef` itself is private, so these are the public seam.
+   */
+  zoomIn(): void {
+    this.cameraRef().zoomIn();
+  }
+
+  /** @see zoomIn */
+  zoomOut(): void {
+    this.cameraRef().zoomOut();
+  }
+
+  /** @see zoomIn */
+  fitAll(): void {
+    this.cameraRef().fitAll();
+  }
+
+  /** @see zoomIn */
+  resetCamera(): void {
+    this.cameraRef().reset();
+  }
+
   /** Called by the camera when the user manually pans/zooms — pauses follow. */
   protected onUserInteract(): void {
     if (this.followExecution()) this.followPaused.set(true);
@@ -1435,7 +1480,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     selectedNode?.classList.add("selected");
   }
 
-  // ── Subgraph inline preview ────────────────────────────────────────
+  // ── Subgraph inline preview ───────────────────────────────────────
 
   /**
    * Inject (or refresh) a static thumbnail of each drillable node's child graph
@@ -1693,7 +1738,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     return graph.nodes.flatMap((node) => (node.dependencies ?? []).map((dependency) => ({ from: dependency, to: node.id })));
   }
 
-  // ── Subgraph navigation ────────────────────────────────────────────
+  // ── Subgraph navigation ─────────────────────────────────────────
 
   /** Resolve a node's child graph via the host resolver, else its inline graph. */
   private resolveSubgraph(node: MermaidRuntime.Node): MermaidRuntime.Graph | null {

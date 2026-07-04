@@ -18,9 +18,11 @@
   </div>
 </div>
 
-<div class="graph-camera__controls">
-  <button type="button" class="graph-camera__btn" title="Zoom in" (click)="zoomIn()">+</button>
-  <button type="button" class="graph-camera__btn" title="Zoom out" (click)="zoomOut()">&minus;</button>
-  <button type="button" class="graph-camera__btn" title="Fit all" (click)="fitAll()">Fit</button>
-  <button type="button" class="graph-camera__btn" title="Reset view" (click)="reset()">Reset</button>
-</div>
+@if (controlsPlacement() === 'built-in') {
+  <div class="graph-camera__controls">
+    <button type="button" class="graph-camera__btn" title="Zoom in" (click)="zoomIn()">+</button>
+    <button type="button" class="graph-camera__btn" title="Zoom out" (click)="zoomOut()">&minus;</button>
+    <button type="button" class="graph-camera__btn" title="Fit all" (click)="fitAll()">Fit</button>
+    <button type="button" class="graph-camera__btn" title="Reset view" (click)="reset()">Reset</button>
+  </div>
+}

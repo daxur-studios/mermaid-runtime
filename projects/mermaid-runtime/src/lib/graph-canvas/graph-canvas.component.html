@@ -10,12 +10,13 @@
   >
     <mr-graph-camera
       class="graph-canvas__camera"
+      [controlsPlacement]="cameraControlsPlacement()"
       (userInteract)="onUserInteract()"
     >
       <markdown
         [data]="flowMarkdown()"
         mermaid
-        [mermaidOptions]="mermaidOptions"
+        [mermaidOptions]="mermaidOptions()"
         class="graph-canvas__mermaid"
       ></markdown>
     </mr-graph-camera>
@@ -50,6 +51,7 @@
 
     @if (showMinimap() && minimapPlacement() === 'built-in') {
       <mr-minimap
+        class="graph-canvas__minimap"
         [contentRect]="minimapContentRect()"
         [viewportRect]="minimapViewportRect()"
         [nodes]="minimapNodes()"
