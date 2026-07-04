@@ -4,6 +4,13 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+
+  --mr-surface-container-high: var(--mat-sys-surface-container-high, #211c42);
+  --mr-outline: var(--mat-sys-outline-variant, #3a3f58);
+  --mr-surface-container: var(--mat-sys-surface-container, #1b1735);
+  --mr-on-surface: var(--mat-sys-on-surface, #e0e1eb);
+  --mr-overlay-hover: var(--app-color-overlay-hover, rgba(255, 255, 255, 0.06));
+  --mr-overlay-active: var(--app-color-overlay-selected, rgba(255, 255, 255, 0.1));
 }
 
 .graph-camera__viewport {
@@ -47,8 +54,8 @@
   gap: 6px;
   padding: 4px;
   border-radius: 8px;
-  background: var(--mat-sys-surface-container-high);
-  border: 1px solid var(--mat-sys-outline-variant);
+  background: var(--mr-surface-container-high);
+  border: 1px solid var(--mr-outline);
 }
 
 .graph-camera__btn {
@@ -58,19 +65,19 @@
   min-width: 32px;
   height: 28px;
   padding: 0 8px;
-  border: 1px solid var(--mat-sys-outline-variant);
+  border: 1px solid var(--mr-outline);
   border-radius: 6px;
-  background: var(--mat-sys-surface-container);
-  color: var(--mat-sys-on-surface);
+  background: var(--mr-surface-container);
+  color: var(--mr-on-surface);
   font-size: 0.8rem;
   line-height: 1;
   cursor: pointer;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--mr-overlay-hover);
   }
 
   &:active {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--mr-overlay-active);
   }
 }

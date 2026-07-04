@@ -5,8 +5,16 @@
   height: 100%;
   min-height: inherit;
   border-radius: 6px;
-  background: var(--mat-sys-surface);
-  border: 1px solid var(--mat-sys-outline-variant);
+
+  // Theme custom properties
+  --mr-surface: var(--mat-sys-surface, #0f0b21);
+  --mr-outline: var(--mat-sys-outline-variant, #3a3f58);
+  --mr-grid-line: var(--app-color-graph-grid-line, #8b5cf6);
+  --mr-grid-dot: var(--app-color-graph-grid-dot, #00f0ff);
+  --mr-overlay-hover: var(--app-color-overlay-hover, rgba(255, 255, 255, 0.12));
+
+  background: var(--mr-surface);
+  border: 1px solid var(--mr-outline);
 }
 
 .graph-canvas__layout {
@@ -27,13 +35,13 @@
   min-height: inherit;
 
   // Dynamic 2-layer grid and dot pattern background
-  background-color: var(--mat-sys-surface, #0f0b21);
+  background-color: var(--mr-surface);
   background-image:
     // Large grid lines (spacing: 120px)
-    linear-gradient(to right, rgba(139, 92, 246, var(--large-grid-opacity, 0.08)) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(139, 92, 246, var(--large-grid-opacity, 0.08)) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--mr-grid-line) calc(var(--large-grid-opacity, 0.08) * 100%), transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--mr-grid-line) calc(var(--large-grid-opacity, 0.08) * 100%), transparent) 1px, transparent 1px),
     // Small dots (spacing: 30px)
-    radial-gradient(circle, rgba(0, 240, 255, var(--small-dot-opacity, 0.15)) 1px, transparent 1px);
+    radial-gradient(circle, color-mix(in srgb, var(--mr-grid-dot) calc(var(--small-dot-opacity, 0.15) * 100%), transparent) 1px, transparent 1px);
 
   background-size:
     calc(120px * var(--zoom-scale, 1)) calc(120px * var(--zoom-scale, 1)),
@@ -68,7 +76,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--mr-overlay-hover);
   }
 }
 

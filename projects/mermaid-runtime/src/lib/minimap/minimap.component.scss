@@ -4,10 +4,16 @@
 // (e.g. an overlay lane) instead.
 :host {
   display: block;
-  border: 1px solid var(--mat-sys-outline-variant);
+  --mr-outline: var(--mat-sys-outline-variant, #3a3f58);
+  --mr-surface-container: var(--mat-sys-surface-container, #1b1735);
+  --mr-minimap-node-done: var(--app-color-graph-minimap-node-done, rgba(255, 255, 255, 0.35));
+  --mr-minimap-viewport-fill: var(--app-color-graph-viewport-fill, rgba(255, 255, 255, 0.08));
+  --mr-outline-on-surface: var(--mat-sys-outline, #757b98);
+
+  border: 1px solid var(--mr-outline);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--mat-sys-surface-container);
+  background: var(--mr-surface-container);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
@@ -18,14 +24,14 @@
 }
 
 .mr-minimap__node {
-  fill: var(--mat-sys-outline);
+  fill: var(--mr-outline-on-surface);
 
   &--running {
     fill: var(--app-color-pass);
   }
 
   &--done {
-    fill: rgba(255, 255, 255, 0.35);
+    fill: var(--mr-minimap-node-done);
   }
 
   &--failed {
@@ -38,8 +44,8 @@
 }
 
 .mr-minimap__viewport {
-  fill: rgba(255, 255, 255, 0.08);
-  stroke: var(--mat-sys-outline);
+  fill: var(--mr-minimap-viewport-fill);
+  stroke: var(--mr-outline-on-surface);
   stroke-width: 1.5;
   pointer-events: none;
 }
