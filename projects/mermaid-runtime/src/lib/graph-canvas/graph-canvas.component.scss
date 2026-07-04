@@ -11,6 +11,15 @@
   --mr-outline: var(--mat-sys-outline-variant, #3a3f58);
   --mr-grid-line: var(--app-color-graph-grid-line, #8b5cf6);
   --mr-grid-dot: var(--app-color-graph-grid-dot, #00f0ff);
+  --mr-grid-large-size: var(--app-graph-grid-large-size, 120px);
+  --mr-grid-small-size: var(--app-graph-grid-small-size, 30px);
+  --mr-grid-line-width: var(--app-graph-grid-line-width, 1px);
+  --mr-grid-line-opacity: var(--app-graph-grid-line-opacity, var(--large-grid-opacity, 0.22));
+  --mr-grid-dot-opacity: var(--app-graph-grid-dot-opacity, var(--small-dot-opacity, 0.36));
+  --mr-grid-large-dot-opacity: var(--app-graph-grid-large-dot-opacity, var(--large-grid-opacity, 0.26));
+  --mr-grid-dot-radius: var(--app-graph-grid-dot-radius, 1.6px);
+  --mr-grid-large-dot-radius: var(--app-graph-grid-large-dot-radius, 2.2px);
+  --mr-background-blend-mode: normal;
   --mr-overlay-hover: var(--app-color-overlay-hover, rgba(255, 255, 255, 0.12));
 
   background: var(--mr-surface);
@@ -33,25 +42,57 @@
   position: relative;
   min-width: 0;
   min-height: inherit;
-
-  // Dynamic 2-layer grid and dot pattern background
   background-color: var(--mr-surface);
-  background-image:
-    // Large grid lines (spacing: 120px)
-    linear-gradient(to right, color-mix(in srgb, var(--mr-grid-line) calc(var(--large-grid-opacity, 0.08) * 100%), transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--mr-grid-line) calc(var(--large-grid-opacity, 0.08) * 100%), transparent) 1px, transparent 1px),
-    // Small dots (spacing: 30px)
-    radial-gradient(circle, color-mix(in srgb, var(--mr-grid-dot) calc(var(--small-dot-opacity, 0.15) * 100%), transparent) 1px, transparent 1px);
+  background-blend-mode: var(--mr-background-blend-mode);
 
-  background-size:
-    calc(120px * var(--zoom-scale, 1)) calc(120px * var(--zoom-scale, 1)),
-    calc(120px * var(--zoom-scale, 1)) calc(120px * var(--zoom-scale, 1)),
-    calc(30px * var(--zoom-scale, 1)) calc(30px * var(--zoom-scale, 1));
+  &--background-none {
+    background-image: none;
+  }
 
-  background-position:
-    var(--pan-x, 0px) var(--pan-y, 0px),
-    var(--pan-x, 0px) var(--pan-y, 0px),
-    var(--pan-x, 0px) var(--pan-y, 0px);
+  &--background-grid-dots {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width)),
+      linear-gradient(to bottom, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width)),
+      radial-gradient(circle, color-mix(in srgb, var(--mr-grid-dot) calc(var(--mr-grid-dot-opacity) * 100%), transparent) var(--mr-grid-dot-radius), transparent var(--mr-grid-dot-radius));
+    background-size:
+      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
+      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
+      calc(var(--mr-grid-small-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-small-size) * var(--zoom-scale, 1));
+    background-position:
+      var(--pan-x, 0px) var(--pan-y, 0px),
+      var(--pan-x, 0px) var(--pan-y, 0px),
+      var(--pan-x, 0px) var(--pan-y, 0px);
+  }
+
+  &--background-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width)),
+      linear-gradient(to bottom, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width));
+    background-size:
+      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
+      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1));
+    background-position:
+      var(--pan-x, 0px) var(--pan-y, 0px),
+      var(--pan-x, 0px) var(--pan-y, 0px);
+  }
+
+  &--background-dots {
+    background-image:
+      radial-gradient(circle, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-large-dot-opacity) * 100%), transparent) var(--mr-grid-large-dot-radius), transparent var(--mr-grid-large-dot-radius)),
+      radial-gradient(circle, color-mix(in srgb, var(--mr-grid-dot) calc(var(--mr-grid-dot-opacity) * 100%), transparent) var(--mr-grid-dot-radius), transparent var(--mr-grid-dot-radius));
+    background-size:
+      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
+      calc(var(--mr-grid-small-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-small-size) * var(--zoom-scale, 1));
+    background-position:
+      var(--pan-x, 0px) var(--pan-y, 0px),
+      var(--pan-x, 0px) var(--pan-y, 0px);
+  }
+
+  &--background-custom {
+    background-image: var(--mr-background-image, none);
+    background-size: var(--mr-background-size, auto);
+    background-position: var(--mr-background-position, var(--pan-x, 0px) var(--pan-y, 0px));
+  }
 }
 
 .graph-canvas__camera {

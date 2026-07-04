@@ -437,6 +437,15 @@ export class GraphCanvasComponent implements AfterViewInit {
    * simple hosts use `mermaidTheme` only.
    */
   readonly mermaidConfig = input<MermaidRuntimeConfig | null>(null);
+
+  /**
+   * Viewport background treatment behind the rendered graph.
+   *
+   * VALUE: Hosts can keep the existing zoom-aware grid/dot effect, switch to a
+   * simpler preset, remove it entirely, or use CSS variables for a custom layered background.
+   */
+  readonly backgroundEffect = input<MermaidRuntime.GraphBackgroundEffect>("grid-dots");
+
   /** Breadcrumb label for the root (top-level) graph. */
   readonly rootLabel = input<string>("Main");
 

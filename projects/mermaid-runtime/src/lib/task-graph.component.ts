@@ -132,6 +132,15 @@ export class TaskGraphComponent {
    * simple hosts use `mermaidTheme` only.
    */
   readonly mermaidConfig = input<MermaidRuntimeConfig | null>(null);
+
+  /**
+   * Viewport background treatment behind the rendered graph.
+   *
+   * VALUE: Preserves the existing grid/dot default while letting hosts disable
+   * it, choose a simpler preset, or supply their own CSS-variable background.
+   */
+  readonly backgroundEffect = input<MermaidRuntime.GraphBackgroundEffect>('grid-dots');
+
   /** Breadcrumb label for the root (top-level) graph. */
   readonly rootLabel = input<string>('Main');
 

@@ -2,6 +2,11 @@
   <div
     class="graph-canvas__viewport"
     #viewport
+    [class.graph-canvas__viewport--background-none]="backgroundEffect() === 'none'"
+    [class.graph-canvas__viewport--background-grid-dots]="backgroundEffect() === 'grid-dots'"
+    [class.graph-canvas__viewport--background-grid]="backgroundEffect() === 'grid'"
+    [class.graph-canvas__viewport--background-dots]="backgroundEffect() === 'dots'"
+    [class.graph-canvas__viewport--background-custom]="backgroundEffect() === 'custom'"
     [style.--zoom-scale]="cameraState().scale"
     [style.--pan-x.px]="cameraState().x"
     [style.--pan-y.px]="cameraState().y"

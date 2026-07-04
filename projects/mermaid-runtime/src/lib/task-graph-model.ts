@@ -28,6 +28,17 @@ export namespace MermaidRuntime {
   export type MermaidThemeId = 'light' | 'dark';
 
   /**
+   * Built-in graph canvas background effect, or a host-supplied CSS variable effect.
+   *
+   * PURPOSE: Keep decorative viewport backgrounds optional and host-controlled without
+   * coupling the runtime to one product's visual design.
+   *
+   * VALUE: Library users can turn the effect off, choose a shipped preset, or set
+   * `custom` and provide layered CSS through the `--mr-background-*` variables.
+   */
+  export type GraphBackgroundEffect = 'none' | 'grid-dots' | 'grid' | 'dots' | 'custom';
+
+  /**
    * Execution state of a single graph node.
    *
    * PURPOSE: Drive per-node status colouring without binding the viewer to one
