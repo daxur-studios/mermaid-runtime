@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, model, output, viewChild } from '@angular/core';
 
 import { MermaidRuntime } from './task-graph-model';
 import {
@@ -123,7 +123,7 @@ export class TaskGraphComponent {
   readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>('dark');
 
   /** Layout direction of the graph flow ('TD' or 'LR'). */
-  readonly direction = input<'TD' | 'LR'>('TD');
+  readonly direction = model<'TD' | 'LR'>('TD');
 
   /**
    * Full Mermaid render config override for hosts that need custom theme variables.

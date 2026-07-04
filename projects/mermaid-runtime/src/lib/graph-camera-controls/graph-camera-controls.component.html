@@ -1,0 +1,44 @@
+<div class="mr-graph-camera-controls">
+  <button
+    type="button"
+    class="mr-graph-camera-controls__btn"
+    title="Zoom in"
+    (click)="canvas().zoomIn()"
+  >
+    <mat-icon>add</mat-icon>
+  </button>
+  <button
+    type="button"
+    class="mr-graph-camera-controls__btn"
+    title="Zoom out"
+    (click)="canvas().zoomOut()"
+  >
+    <mat-icon>remove</mat-icon>
+  </button>
+  <button
+    type="button"
+    class="mr-graph-camera-controls__btn"
+    title="Fit all"
+    (click)="canvas().fitAll()"
+  >
+    Fit
+  </button>
+  <button
+    type="button"
+    class="mr-graph-camera-controls__btn"
+    title="Reset view"
+    (click)="canvas().resetCamera()"
+  >
+    Reset
+  </button>
+  @if (showDirectionToggle()) {
+    <button
+      type="button"
+      class="mr-graph-camera-controls__btn mr-graph-camera-controls__btn--direction"
+      [title]="canvas().direction() === 'TD' ? 'Switch to Horizontal layout' : 'Switch to Vertical layout'"
+      (click)="toggleDirection()"
+    >
+      <mat-icon>{{ canvas().direction() === 'TD' ? 'arrow_downward' : 'arrow_forward' }}</mat-icon>
+    </button>
+  }
+</div>

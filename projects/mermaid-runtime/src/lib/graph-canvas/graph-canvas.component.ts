@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from "@angular/core";
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, model, output, signal, untracked, viewChild } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { MarkdownModule } from "ngx-markdown";
 
@@ -428,7 +428,7 @@ export class GraphCanvasComponent implements AfterViewInit {
   readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>("dark");
 
   /** Layout direction of the graph flow ('TD' or 'LR'). */
-  readonly direction = input<'TD' | 'LR'>('TD');
+  readonly direction = model<'TD' | 'LR'>('TD');
 
   /**
    * Full Mermaid render config override for hosts that need custom theme variables.
@@ -734,6 +734,13 @@ export class GraphCanvasComponent implements AfterViewInit {
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
+
+    effect(() => {
+      this.direction();
+      untracked(() => {
+        this.hasFitInitialView = false;
+      });
+    });
 
     // Keep the navigation stack in sync with the host-controlled `path` input so
     // browser back/forward can restore subgraph depth. Reads only `path` (and the

@@ -1,0 +1,52 @@
+:host {
+  display: block;
+
+  --mr-surface-container-high: var(--mat-sys-surface-container-high, #211c42);
+  --mr-outline: var(--mat-sys-outline-variant, #3a3f58);
+  --mr-surface-container: var(--mat-sys-surface-container, #1b1735);
+  --mr-on-surface: var(--mat-sys-on-surface, #e0e1eb);
+  --mr-overlay-hover: var(--app-color-overlay-hover, rgba(255, 255, 255, 0.06));
+  --mr-overlay-active: var(--app-color-overlay-selected, rgba(255, 255, 255, 0.1));
+}
+
+.mr-graph-camera-controls {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--mr-surface-container-high);
+  border: 1px solid var(--mr-outline);
+}
+
+.mr-graph-camera-controls__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--mr-outline);
+  border-radius: 6px;
+  background: var(--mr-surface-container);
+  color: var(--mr-on-surface);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  mat-icon {
+    font-size: 1.1rem;
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  &:hover {
+    background: var(--mr-overlay-hover);
+  }
+
+  &:active {
+    background: var(--mr-overlay-active);
+  }
+}
