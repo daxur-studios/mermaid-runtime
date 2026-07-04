@@ -115,9 +115,29 @@ export class GraphPreviewMermaidComponent {
   /** Status-only signature - gates the cheap recolor-in-place DOM pass. */
   private readonly statusHash = computed(() => hashPreviewStatuses(this.graph()));
 
-  private readonly resolvedMermaidConfig = computed<MermaidRuntimeConfig>(() =>
-    this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), false),
-  );
+  /**
+   * Compact-render override applied on top of {@link buildMermaidRuntimeConfig}'s defaults.
+   *
+   * PURPOSE: `htmlLabels: true` (the shared default, tuned for the full interactive graph
+   * viewer) renders node labels as `<foreignObject>` HTML content, which Chromium does not
+   * rescale with the surrounding SVG's `viewBox` — at this component's thumbnail size that
+   * left labels (and their node boxes) rendering at full, unscaled size and spilling out of
+   * the tiny preview area.
+   *
+   * VALUE: Plain SVG `<text>` labels scale correctly with the viewBox, so the preview stays
+   * inside whatever box the host gives it via CSS, however small.
+   */
+  private static readonly COMPACT_FLOWCHART_OVERRIDE = { htmlLabels: false, useMaxWidth: true } as const;
+
+  private readonly resolvedMermaidConfig = computed<MermaidRuntimeConfig>(() => {
+    const override = this.mermaidConfig();
+    if (override) return override;
+    const base = buildMermaidRuntimeConfig(this.mermaidTheme(), false);
+    return {
+      ...base,
+      flowchart: { ...base.flowchart, ...GraphPreviewMermaidComponent.COMPACT_FLOWCHART_OVERRIDE },
+    };
+  });
 
   /** The rendered SVG markup, sanitized for `[innerHTML]` binding. */
   protected readonly svg = signal<SafeHtml | null>(null);

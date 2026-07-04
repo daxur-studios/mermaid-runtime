@@ -1,7 +1,7 @@
 :host {
   display: block;
   width: 100%;
-  height: 40px;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -50,5 +50,22 @@
   ::ng-deep .node.skipped rect {
     fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15)) !important;
     stroke: var(--app-color-warn, #ffc107) !important;
+  }
+
+  // Not-yet-run nodes (the idle/template view): neutral, theme-aware treatment instead of
+  // whatever fill Mermaid's own base theme happens to pick — that raw theme fill is what
+  // rendered as an unreadable near-black box on a light host surface.
+  ::ng-deep .node.idle .basic,
+  ::ng-deep .node.idle .label-container,
+  ::ng-deep .node.idle polygon,
+  ::ng-deep .node.idle rect {
+    fill: var(--app-color-idle-bg, var(--mat-sys-surface-container-high, rgba(255, 255, 255, 0.06))) !important;
+    stroke: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.4))) !important;
+  }
+
+  ::ng-deep .node.idle .nodeLabel,
+  ::ng-deep .node.idle tspan {
+    fill: var(--app-color-idle-text, var(--mat-sys-on-surface-variant, rgba(255, 255, 255, 0.7))) !important;
+    color: var(--app-color-idle-text, var(--mat-sys-on-surface-variant, rgba(255, 255, 255, 0.7))) !important;
   }
 }

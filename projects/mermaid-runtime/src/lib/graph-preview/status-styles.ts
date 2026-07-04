@@ -12,6 +12,7 @@ import { MermaidRuntime } from '../task-graph-model';
  * dependency on the canvas.
  */
 export const DEFAULT_PREVIEW_STATUS_STYLES: MermaidRuntime.StatusStyleMap = {
+  undone: { className: 'idle', label: 'Idle' },
   running: { className: 'running', label: 'Running' },
   complete: { className: 'done', label: 'Complete' },
   failed: { className: 'failed', label: 'Failed' },
