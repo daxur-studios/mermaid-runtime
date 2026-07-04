@@ -155,6 +155,16 @@ export class TaskGraphComponent {
   readonly cameraControlsPlacement = input<'built-in' | 'host'>('built-in');
 
   /**
+   * Whether the selected-node inspector renders built-in (projected into the canvas's
+   * `[detail]` side column), or is suppressed so a host can render its own `<mr-graph-inspector>`
+   * wherever fits its layout (e.g. a persistent sidebar area rather than a canvas-reserved column).
+   *
+   * VALUE: Same seam as `minimapPlacement`/`cameraControlsPlacement`, but for chrome that reserves
+   * layout space beside the graph instead of floating over it.
+   */
+  readonly inspectorPlacement = input<'built-in' | 'host'>('built-in');
+
+  /**
    * Resolves a node's child graph. When omitted, the node's inline
    * `subgraph` is used.
    */

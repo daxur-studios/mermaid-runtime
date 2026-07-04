@@ -20,7 +20,7 @@
   [subgraphResolver]="subgraphResolver()"
   [path]="path()"
   [followExecution]="followExecution()"
-  [showDetail]="showInspector()"
+  [showDetail]="showInspector() && inspectorPlacement() === 'built-in'"
   (nodeSelected)="nodeSelected.emit($event)"
   (nodeContextMenu)="nodeContextMenu.emit($event)"
   (subgraphEntered)="subgraphEntered.emit($event)"
@@ -33,7 +33,7 @@
        forwarded content and it would be silently dropped. -->
   <ng-content select="[overlay]" ngProjectAs="[overlay]"></ng-content>
 
-  @if (showInspector()) {
+  @if (showInspector() && inspectorPlacement() === 'built-in') {
     <mr-graph-inspector
       detail
       [node]="canvas.selectedNode()"
