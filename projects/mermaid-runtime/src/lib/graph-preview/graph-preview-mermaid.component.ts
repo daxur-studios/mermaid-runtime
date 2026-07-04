@@ -230,9 +230,20 @@ export class GraphPreviewMermaidComponent {
     }
   }
 
-  /** Resolve a node's alias to its rendered `.node` element, via the click-suppressed anchor. */
+  /** Resolve a node's alias to its rendered `.node` element, via ID parsing or click anchor. */
   private findNodeElement(alias: string): Element | null {
     const host = this.hostElement.nativeElement;
+    const nodes = host.querySelectorAll('g.node');
+    for (const nodeEl of Array.from(nodes)) {
+      const id = nodeEl.getAttribute('id');
+      if (id) {
+        const parts = id.split('-');
+        if (parts.includes(alias)) {
+          return nodeEl;
+        }
+      }
+    }
+
     const link = (Array.from(host.querySelectorAll('a')) as Element[]).find(
       (linkElement) => this.readAliasFromLink(linkElement) === alias,
     );

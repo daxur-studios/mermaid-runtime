@@ -68,4 +68,33 @@
     fill: var(--app-color-idle-text, var(--mat-sys-on-surface-variant, rgba(255, 255, 255, 0.7))) !important;
     color: var(--app-color-idle-text, var(--mat-sys-on-surface-variant, rgba(255, 255, 255, 0.7))) !important;
   }
+
+  // Ensure edges and paths are visible and match the theme
+  ::ng-deep path.flowchart-link,
+  ::ng-deep .edgePath .path,
+  ::ng-deep .edgePath path {
+    stroke: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.4))) !important;
+    stroke-width: 1px !important;
+    fill: none !important;
+  }
+
+  // Style arrowheads/markers
+  ::ng-deep marker path,
+  ::ng-deep .marker path {
+    fill: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.4))) !important;
+    stroke: none !important;
+  }
+
+  // General text styling for active states
+  ::ng-deep .node.running .nodeLabel,
+  ::ng-deep .node.running tspan,
+  ::ng-deep .node.done .nodeLabel,
+  ::ng-deep .node.done tspan,
+  ::ng-deep .node.failed .nodeLabel,
+  ::ng-deep .node.failed tspan,
+  ::ng-deep .node.skipped .nodeLabel,
+  ::ng-deep .node.skipped tspan {
+    fill: var(--mat-sys-on-surface, #ffffff) !important;
+    color: var(--mat-sys-on-surface, #ffffff) !important;
+  }
 }
