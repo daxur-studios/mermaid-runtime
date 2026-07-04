@@ -24,7 +24,7 @@
   cursor: pointer;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--app-color-overlay-hover);
   }
 
   mat-icon {
@@ -114,7 +114,7 @@
   height: 0.4rem;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--mat-sys-outline-variant);
 }
 
 .graph-inspector__progress-bar {
@@ -172,7 +172,7 @@
   cursor: pointer;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--app-color-overlay-hover);
     border-color: var(--mat-sys-primary);
   }
 
@@ -278,7 +278,7 @@
   code {
     padding: 0.12rem 0.35rem;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--mat-sys-surface-container-high);
     color: var(--mat-sys-on-surface);
   }
 }
@@ -288,5 +288,26 @@
     max-height: 24rem;
     border-top: 1px solid var(--mat-sys-outline-variant);
     border-left: none;
+  }
+}
+
+.graph-inspector__copy-agent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--mat-sys-surface-container-high);
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 4px;
+  color: var(--mat-sys-on-surface-variant);
+  cursor: pointer;
+  font-size: 11px;
+  height: 26px;
+  transition: background-color 0.2s, color 0.2s;
+
+  &:hover {
+    background: var(--mat-sys-surface-container-highest);
+    color: var(--mat-sys-on-surface);
   }
 }
