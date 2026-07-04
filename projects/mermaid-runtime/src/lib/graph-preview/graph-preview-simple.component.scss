@@ -7,49 +7,69 @@
 .gp-simple-root {
   width: 100%;
   height: 100%;
-}
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-.gp-svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  overflow: visible;
-}
-
-.gp-edge {
-  stroke: var(--mat-sys-outline, rgba(255, 255, 255, 0.3));
-  stroke-dasharray: 2 1;
-  stroke-width: 0.75;
-  opacity: 0.6;
-}
-
-.gp-box {
-  fill: var(--mat-sys-surface-container-high, rgba(255, 255, 255, 0.08));
-  stroke: var(--mat-sys-outline, rgba(255, 255, 255, 0.3));
-  stroke-width: 0.75;
-
-  &.running {
-    fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15));
-    stroke: var(--app-color-active, #2196f3);
+  ::ng-deep svg {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    margin: auto;
   }
-  &.done,
-  &.passed,
-  &.success {
-    fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
-    stroke: var(--app-color-pass, #4caf50);
-  }
-  &.failed,
-  &.error {
-    fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
-    stroke: var(--app-color-fail, #f44336);
-  }
-  &.skipped {
-    fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15));
-    stroke: var(--app-color-warn, #ffc107);
-  }
-}
 
-.gp-more {
-  fill: var(--mat-sys-on-surface-variant, rgba(255, 255, 255, 0.6));
-  font-size: 7px;
+  // Force nodes to render as simple small circles
+  ::ng-deep .node circle {
+    r: 6px !important;
+    fill: var(--app-color-idle-bg, var(--mat-sys-surface-container-high, rgba(255, 255, 255, 0.06))) !important;
+    stroke: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.4))) !important;
+    stroke-width: 1.5px !important;
+    transition:
+      fill 0.15s ease,
+      stroke 0.15s ease;
+  }
+
+  // Node status colors
+  ::ng-deep .node.running circle {
+    fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15)) !important;
+    stroke: var(--app-color-active, #2196f3) !important;
+  }
+
+  ::ng-deep .node.done circle {
+    fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15)) !important;
+    stroke: var(--app-color-pass, #4caf50) !important;
+  }
+
+  ::ng-deep .node.failed circle {
+    fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15)) !important;
+    stroke: var(--app-color-fail, #f44336) !important;
+  }
+
+  ::ng-deep .node.skipped circle {
+    fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15)) !important;
+    stroke: var(--app-color-warn, #ffc107) !important;
+  }
+
+  // Strip text labels inside nodes
+  ::ng-deep .node .nodeLabel,
+  ::ng-deep .node tspan,
+  ::ng-deep .node foreignObject {
+    display: none !important;
+  }
+
+  // Thick connecting lines
+  ::ng-deep path.flowchart-link,
+  ::ng-deep .edgePath .path,
+  ::ng-deep .edgePath path {
+    stroke: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.3))) !important;
+    stroke-width: 2.5px !important;
+    fill: none !important;
+    opacity: 0.65;
+  }
+
+  // Hide arrowheads/markers for a clean far-away overview
+  ::ng-deep marker,
+  ::ng-deep .markerPath {
+    display: none !important;
+  }
 }

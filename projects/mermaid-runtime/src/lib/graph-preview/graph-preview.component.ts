@@ -46,6 +46,9 @@ export class GraphPreviewComponent {
   /** Contrast family used when the runtime builds its default Mermaid config. */
   readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>('dark');
 
+  /** Layout direction of the graph flow ('TD' or 'LR'). */
+  readonly direction = input<'TD' | 'LR'>('TD');
+
   /**
    * Full Mermaid render config override for hosts that need custom theme variables.
    *

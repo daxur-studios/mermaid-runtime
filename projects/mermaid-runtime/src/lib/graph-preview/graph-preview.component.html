@@ -2,12 +2,17 @@
   @case ('mermaid') {
     <mr-graph-preview-mermaid
       [graph]="graph()"
+      [direction]="direction()"
       [statusStyles]="statusStyles()"
       [mermaidTheme]="mermaidTheme()"
       [mermaidConfig]="mermaidConfig()"
     />
   }
   @default {
-    <mr-graph-preview-simple [graph]="graph()" [statusStyles]="statusStyles()" />
+    <mr-graph-preview-simple
+      [graph]="graph()"
+      [direction]="direction()"
+      [statusStyles]="statusStyles()"
+    />
   }
 }

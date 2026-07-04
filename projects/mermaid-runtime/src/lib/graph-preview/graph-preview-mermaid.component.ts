@@ -89,6 +89,9 @@ export class GraphPreviewMermaidComponent {
   /** Contrast family used when the runtime builds its default Mermaid config. */
   readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>('dark');
 
+  /** Layout direction of the graph flow ('TD' or 'LR'). */
+  readonly direction = input<'TD' | 'LR'>('TD');
+
   /**
    * Full Mermaid render config override for hosts that need custom theme variables.
    *
@@ -156,10 +159,11 @@ export class GraphPreviewMermaidComponent {
 
     effect(() => {
       this.structureHash();
+      const direction = this.direction();
       const config = this.resolvedMermaidConfig();
       const graph = untracked(() => this.graph());
       const aliasByNodeId = untracked(() => this.aliasByNodeId());
-      void this.renderMermaid(graph, aliasByNodeId, config);
+      void this.renderMermaid(graph, aliasByNodeId, config, direction);
     });
 
     effect(() => {
@@ -172,10 +176,11 @@ export class GraphPreviewMermaidComponent {
     graph: MermaidRuntime.Graph,
     aliasByNodeId: Map<string, string>,
     config: MermaidRuntimeConfig,
+    direction: 'TD' | 'LR',
   ): Promise<void> {
     const token = ++this.renderToken;
     ensureMermaidConfigured(config);
-    const source = this.buildMermaidSource(graph, aliasByNodeId);
+    const source = this.buildMermaidSource(graph, aliasByNodeId, direction);
     const renderId = `${this.instanceId}-${token}`;
     const { svg, bindFunctions } = await mermaid.render(renderId, source);
     if (token !== this.renderToken) return;
@@ -190,10 +195,14 @@ export class GraphPreviewMermaidComponent {
     );
   }
 
-  private buildMermaidSource(graph: MermaidRuntime.Graph, aliasByNodeId: Map<string, string>): string {
+  private buildMermaidSource(
+    graph: MermaidRuntime.Graph,
+    aliasByNodeId: Map<string, string>,
+    direction: 'TD' | 'LR',
+  ): string {
     const edges = resolvePreviewEdges(graph);
     const lines = [
-      'flowchart TD',
+      `flowchart ${direction}`,
       ...graph.nodes.map((node) => `  ${aliasByNodeId.get(node.id)}["${this.escapeMermaidString(node.title)}"]`),
       ...edges
         .map((edge) => {
@@ -234,7 +243,7 @@ export class GraphPreviewMermaidComponent {
   private findNodeElement(alias: string): Element | null {
     const host = this.hostElement.nativeElement;
     const nodes = host.querySelectorAll('g.node');
-    for (const nodeEl of Array.from(nodes)) {
+    for (const nodeEl of Array.from(nodes) as Element[]) {
       const id = nodeEl.getAttribute('id');
       if (id) {
         const parts = id.split('-');
