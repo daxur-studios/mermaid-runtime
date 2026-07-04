@@ -427,6 +427,9 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Contrast family used when the runtime builds its default Mermaid config. */
   readonly mermaidTheme = input<MermaidRuntime.MermaidThemeId>("dark");
 
+  /** Layout direction of the graph flow ('TD' or 'LR'). */
+  readonly direction = input<'TD' | 'LR'>('TD');
+
   /**
    * Full Mermaid render config override for hosts that need custom theme variables.
    *
@@ -827,7 +830,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     const aliasFor = (id: string): string | undefined => toAlias.get(id);
 
     return [
-      "flowchart TD",
+      `flowchart ${this.direction()}`,
       ...this.buildNodeDefinitionBlocks(nodes, toAlias, decorations),
       "",
       ...this.buildEdgeLines(aliasFor),
