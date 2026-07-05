@@ -10,6 +10,7 @@ import { MinimapComponent } from "../minimap/minimap.component";
 import { GraphBreadcrumbComponent, type GraphBreadcrumbEntry } from "../graph-breadcrumb/graph-breadcrumb.component";
 import { buildMermaidRuntimeConfig, type MermaidRuntimeConfig } from "../mermaid-theme";
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
+import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface GraphEdge {
@@ -120,6 +121,83 @@ const CURRENT_NODE_CLASS = "current";
  * host having to decorate them.
  */
 const HAS_SUBGRAPH_CLASS = "has-subgraph";
+
+/** CSS class for the drillable-node corner badge group (see graph-canvas.component.scss). */
+const SUBGRAPH_BADGE_CLASS = "mr-node-subgraph-badge";
+
+/** Radius (px) of the drillable-node corner badge circle, centred on the node shape's top-right corner. */
+const SUBGRAPH_BADGE_RADIUS_PX = 7;
+
+/**
+ * Reserved pixel footprint for content injected into a node's label *after*
+ * Mermaid's own render (see {@link GraphCanvasComponent.applySubgraphPreviews}).
+ *
+ * VALUE: A same-sized placeholder is baked into the Mermaid label text
+ * *before* render (see {@link GraphCanvasComponent.buildReservedContentHtml}),
+ * so Mermaid's `htmlLabels` measurement already accounts for this space — the
+ * node box and its connected edges are sized/positioned around it from the
+ * very first render. The post-render step then only ever fills an
+ * already-reserved box; it never needs Mermaid to resize or reflow anything.
+ */
+const RESERVED_LABEL_CONTENT_SIZE = {
+  "subgraph-preview": { width: 54, height: 54 },
+} as const satisfies Record<string, { readonly width: number; readonly height: number }>;
+
+type ReservedLabelContentKind = keyof typeof RESERVED_LABEL_CONTENT_SIZE;
+
+/**
+ * Outward offset (px) for the selected/current-node outline ring — the same
+ * node shape, redrawn larger, so it reads as a ring around the node rather
+ * than a border on it.
+ *
+ * VALUE: Kept larger than {@link NODE_PROGRESS_TRACE_OFFSET_PX} so the two
+ * rings never overlap: shape → progress trace → this outline, outside-in.
+ */
+const NODE_OUTLINE_OFFSET_PX = 12;
+
+/** CSS class for the selected-node outline ring (thin, white — see graph-canvas.component.scss). */
+const SELECTED_OUTLINE_CLASS = "mr-node-outline-selected";
+
+/** CSS class for the current/live-focus-node outline ring (thick, blue — see graph-canvas.component.scss). */
+const CURRENT_OUTLINE_CLASS = "mr-node-outline-current";
+
+/**
+ * Outward offset (px) for the progress trace — smaller than
+ * {@link NODE_OUTLINE_OFFSET_PX} so it sits in the gap between the node's own
+ * border and the selected/current outline ring, never touching either.
+ */
+const NODE_PROGRESS_TRACE_OFFSET_PX = 5;
+
+/** CSS class for the shape-tracing progress ring (see graph-canvas.component.scss). */
+const PROGRESS_TRACE_CLASS = "mr-node-progress-trace";
+
+/** CSS class for the small progress-percent text shown above a node's progress trace. */
+const PROGRESS_TEXT_CLASS = "mr-node-progress-text";
+
+/** Vertical gap (px) between the progress trace's topmost point and its percentage text. */
+const PROGRESS_TEXT_GAP_PX = 6;
+
+/**
+ * Marker class applied to every shape-offset overlay element (selected/current
+ * outline rings, the progress trace path and its text), in addition to that
+ * element's own specific class.
+ *
+ * PURPOSE: The pre-existing node status/hover/pulse/replay-flash styling
+ * (see graph-canvas.component.scss) targets *every* `rect`/`polygon` inside
+ * `.node`, because until this overlay mechanism existed there was ever only
+ * one such element per node — the node's own shape. These overlays are
+ * additional `rect`/`polygon`/`path` siblings, so without an explicit
+ * exclusion those `!important` fill/stroke rules also repaint the overlay
+ * (e.g. a `.done` node's translucent fill "!important"-overrides the
+ * outline's `fill: none`), which — since the overlay is drawn on top and
+ * larger than the node — visually reads as the node growing and swallowing
+ * its own label text.
+ *
+ * VALUE: One class, excluded once per generic selector via `:not()`, keeps
+ * every current and future overlay immune to node-status styling without
+ * hand-listing each overlay class in every status/hover/pulse rule.
+ */
+const NODE_DECORATION_CLASS = "mr-node-decoration";
 
 /**
  * Zoom cap when follow-execution frames the running nodes.
@@ -687,7 +765,10 @@ export class GraphCanvasComponent implements AfterViewInit {
           if (element.closest(`.${REPLAY_ANIMATION_OVERLAY_CLASS}, .${REPLAY_EDGE_TRACE_CLASS}`)) {
             return false;
           }
-          if (element.closest(".task-graph-node-progress-wrap, .task-graph-node-subgraph-preview")) {
+          if (element.closest(".task-graph-node-subgraph-preview")) {
+            return false;
+          }
+          if (element.closest(`.${NODE_DECORATION_CLASS}`)) {
             return false;
           }
         }
@@ -875,13 +956,15 @@ export class GraphCanvasComponent implements AfterViewInit {
 
   private buildNodeDefinitionLine(node: MermaidRuntime.Node, alias: string, decoration: MermaidRuntime.NodeDecoration | undefined): string {
     const title = this.buildNodeLabel(decoration?.displayTitle ?? node.title);
+    const reservedPreview = this.showSubgraphPreview() && this.resolveSubgraph(node) ? this.buildReservedContentHtml("subgraph-preview") : "";
+    const label = `${title}${reservedPreview}`;
     switch (decoration?.shape) {
       case "diamond":
-        return `  ${alias}{"${title}"}`;
+        return `  ${alias}{"${label}"}`;
       case "subroutine":
-        return `  ${alias}[["${title}"]]`;
+        return `  ${alias}[["${label}"]]`;
       default:
-        return `  ${alias}["${title}"]`;
+        return `  ${alias}["${label}"]`;
     }
   }
 
@@ -895,6 +978,24 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   private buildNodeLabel(title: string): string {
     return this.escapeMermaidString(title);
+  }
+
+  /**
+   * Builds an empty, fixed-size placeholder `<div>` for content that is
+   * filled in *after* Mermaid's own render (e.g. {@link applySubgraphPreviews}).
+   *
+   * VALUE: Reserves the content's known footprint (see
+   * {@link RESERVED_LABEL_CONTENT_SIZE}) inside the Mermaid label text so
+   * `htmlLabels` measurement includes it before the node/edges are sized —
+   * see the note on {@link RESERVED_LABEL_CONTENT_SIZE} for why this matters.
+   *
+   * Attributes use single quotes: this HTML is embedded inside a
+   * double-quote-delimited Mermaid label string, so double quotes here would
+   * terminate that string early.
+   */
+  private buildReservedContentHtml(kind: ReservedLabelContentKind): string {
+    const size = RESERVED_LABEL_CONTENT_SIZE[kind];
+    return `<div class='task-graph-node-${kind}' style='width:${size.width}px;height:${size.height}px'></div>`;
   }
 
   /**
@@ -1217,6 +1318,203 @@ export class GraphCanvasComponent implements AfterViewInit {
     requestAnimationFrame(() => this.applySubgraphPreviews());
   }
 
+  // ── Shape-offset overlays (selected/current outline ring, progress trace) ──
+  //
+  // PURPOSE: Draw the selected/current highlight and the progress indicator as
+  // the node's own shape redrawn larger (an outline ring), rather than a fill
+  // colour or an in-label progress bar — so they read the same way regardless
+  // of whether the underlying node is a rect, diamond, or subroutine.
+  //
+  // VALUE: Mermaid already computed each node's exact shape when it rendered
+  // the `<rect>`/`<polygon>` in `.label-container` — these helpers read that
+  // geometry back out and offset it, instead of re-deriving node dimensions.
+
+  /** Find the SVG element Mermaid drew for a node's own shape (`<rect>` for `rect`/`subroutine`-envelope purposes, `<polygon>` for `diamond`/`subroutine`). */
+  private findNodeShapeElement(nodeElement: Element): SVGGraphicsElement | null {
+    return nodeElement.querySelector<SVGGraphicsElement>(".label-container");
+  }
+
+  /** Reads `shapeEl`'s geometry and returns it offset outward by `offsetPx`, or null if `shapeEl` is a shape kind this library doesn't know how to offset. */
+  private readOffsetGeometry(shapeEl: SVGGraphicsElement, offsetPx: number): OffsetShapeGeometry | null {
+    if (shapeEl instanceof SVGRectElement) {
+      const rx = shapeEl.rx?.baseVal?.value ?? 0;
+      return offsetRectGeometry(shapeEl.x.baseVal.value, shapeEl.y.baseVal.value, shapeEl.width.baseVal.value, shapeEl.height.baseVal.value, rx, offsetPx);
+    }
+    if (shapeEl instanceof SVGPolygonElement) {
+      const points = Array.from(shapeEl.points).map((point) => ({ x: point.x, y: point.y }));
+      return offsetPolygonGeometry(points, offsetPx);
+    }
+    return null;
+  }
+
+  /** Reads `shapeEl`'s own (un-offset) bounding-box top-right corner, in the same local coordinate space {@link readOffsetGeometry} uses. */
+  private readShapeTopRightCorner(shapeEl: SVGGraphicsElement): ShapePoint | null {
+    const geometry = this.readOffsetGeometry(shapeEl, 0);
+    if (!geometry) return null;
+    if (geometry.kind === "rect") {
+      return { x: geometry.x + geometry.width, y: geometry.y };
+    }
+    const xs = geometry.points.map((point) => point.x);
+    const ys = geometry.points.map((point) => point.y);
+    return { x: Math.max(...xs), y: Math.min(...ys) };
+  }
+
+  /**
+   * Creates or updates a `cssClass`-marked `<rect>`/`<polygon>` sibling inside
+   * `nodeElement`, tracing the node's own shape offset outward by `offsetPx`.
+   *
+   * VALUE: Reuses `shapeEl`'s own `transform` attribute (rather than reading
+   * ancestor transforms) so the overlay lands in the same screen position
+   * regardless of whether Mermaid put the positioning transform on the shape
+   * element itself (as it does for `diamond`) or left it on an ancestor group
+   * (as it does for `rect`) — copying "whatever transform the shape already
+   * has" is correct either way.
+   */
+  private applyShapeOutlineOverlay(nodeElement: Element, cssClass: string, offsetPx: number): void {
+    const existing = nodeElement.querySelector<SVGGraphicsElement>(`:scope > .${cssClass}`);
+    const shapeEl = this.findNodeShapeElement(nodeElement);
+    const geometry = shapeEl ? this.readOffsetGeometry(shapeEl, offsetPx) : null;
+    if (!shapeEl || !geometry) {
+      existing?.remove();
+      return;
+    }
+
+    const tag = geometry.kind === "rect" ? "rect" : "polygon";
+    let overlay = existing;
+    if (!overlay || overlay.tagName.toLowerCase() !== tag) {
+      existing?.remove();
+      overlay = document.createElementNS(SVG_NAMESPACE, tag) as SVGGraphicsElement;
+      overlay.classList.add(cssClass, NODE_DECORATION_CLASS);
+      overlay.setAttribute("fill", "none");
+      overlay.setAttribute("pointer-events", "none");
+      nodeElement.appendChild(overlay);
+    }
+
+    const transform = shapeEl.getAttribute("transform");
+    if (transform) overlay.setAttribute("transform", transform);
+    else overlay.removeAttribute("transform");
+
+    if (geometry.kind === "rect") {
+      overlay.setAttribute("x", String(geometry.x));
+      overlay.setAttribute("y", String(geometry.y));
+      overlay.setAttribute("width", String(geometry.width));
+      overlay.setAttribute("height", String(geometry.height));
+      if (geometry.rx) overlay.setAttribute("rx", String(geometry.rx));
+      else overlay.removeAttribute("rx");
+    } else {
+      overlay.setAttribute("points", geometry.points.map((point) => `${point.x},${point.y}`).join(" "));
+    }
+  }
+
+  /** Removes a previously-applied {@link applyShapeOutlineOverlay} ring, if present. */
+  private removeShapeOutlineOverlay(nodeElement: Element, cssClass: string): void {
+    nodeElement.querySelector(`:scope > .${cssClass}`)?.remove();
+  }
+
+  /**
+   * Creates, updates, or removes a drillable node's corner badge: a small
+   * circle-plus-cross glyph centred on the node shape's own top-right corner.
+   *
+   * VALUE: Replaces a dashed outline as the "this node opens a subgraph" cue,
+   * so the node's own border can stay solid while the badge alone carries
+   * that meaning (see graph-canvas.component.scss).
+   */
+  private applySubgraphBadge(nodeElement: Element, hasSubgraph: boolean): void {
+    const existing = nodeElement.querySelector<SVGGElement>(`:scope > .${SUBGRAPH_BADGE_CLASS}`);
+    const shapeEl = hasSubgraph ? this.findNodeShapeElement(nodeElement) : null;
+    const corner = shapeEl ? this.readShapeTopRightCorner(shapeEl) : null;
+    if (!corner) {
+      existing?.remove();
+      return;
+    }
+
+    let group = existing;
+    if (!group) {
+      group = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
+      group.classList.add(SUBGRAPH_BADGE_CLASS, NODE_DECORATION_CLASS);
+      group.setAttribute("pointer-events", "none");
+      group.appendChild(document.createElementNS(SVG_NAMESPACE, "circle"));
+      group.appendChild(document.createElementNS(SVG_NAMESPACE, "line"));
+      group.appendChild(document.createElementNS(SVG_NAMESPACE, "line"));
+      nodeElement.appendChild(group);
+    }
+
+    const transform = shapeEl!.getAttribute("transform");
+    if (transform) group.setAttribute("transform", transform);
+    else group.removeAttribute("transform");
+
+    const circle = group.querySelector("circle")!;
+    circle.setAttribute("cx", String(corner.x));
+    circle.setAttribute("cy", String(corner.y));
+    circle.setAttribute("r", String(SUBGRAPH_BADGE_RADIUS_PX));
+
+    const [vertical, horizontal] = Array.from(group.querySelectorAll("line"));
+    const armLength = SUBGRAPH_BADGE_RADIUS_PX * 0.5;
+    vertical.setAttribute("x1", String(corner.x));
+    vertical.setAttribute("y1", String(corner.y - armLength));
+    vertical.setAttribute("x2", String(corner.x));
+    vertical.setAttribute("y2", String(corner.y + armLength));
+    horizontal.setAttribute("x1", String(corner.x - armLength));
+    horizontal.setAttribute("y1", String(corner.y));
+    horizontal.setAttribute("x2", String(corner.x + armLength));
+    horizontal.setAttribute("y2", String(corner.y));
+  }
+
+  /**
+   * Creates, updates, or removes a node's progress trace: a `<path>` tracing
+   * its shape (offset outward by {@link NODE_PROGRESS_TRACE_OFFSET_PX}),
+   * revealed clockwise from its topmost point via `stroke-dasharray`/
+   * `stroke-dashoffset`, plus a small percentage `<text>` above it.
+   */
+  private applyProgressTraceOverlay(nodeElement: Element, progressPercent: number | null): void {
+    const existingPath = nodeElement.querySelector<SVGPathElement>(`:scope > .${PROGRESS_TRACE_CLASS}`);
+    const existingText = nodeElement.querySelector<SVGTextElement>(`:scope > .${PROGRESS_TEXT_CLASS}`);
+
+    const shapeEl = progressPercent === null ? null : this.findNodeShapeElement(nodeElement);
+    const geometry = shapeEl ? this.readOffsetGeometry(shapeEl, NODE_PROGRESS_TRACE_OFFSET_PX) : null;
+    if (progressPercent === null || !shapeEl || !geometry) {
+      existingPath?.remove();
+      existingText?.remove();
+      return;
+    }
+
+    const transform = shapeEl.getAttribute("transform");
+
+    let path = existingPath;
+    if (!path) {
+      path = document.createElementNS(SVG_NAMESPACE, "path") as SVGPathElement;
+      path.classList.add(PROGRESS_TRACE_CLASS, NODE_DECORATION_CLASS);
+      path.setAttribute("fill", "none");
+      path.setAttribute("pointer-events", "none");
+      nodeElement.appendChild(path);
+    }
+    if (transform) path.setAttribute("transform", transform);
+    else path.removeAttribute("transform");
+    path.setAttribute("d", buildTopStartOutlinePath(geometry));
+    const pathLength = computeOutlinePerimeterLength(geometry);
+    path.style.strokeDasharray = `${pathLength}`;
+    path.style.strokeDashoffset = `${pathLength * (1 - progressPercent / 100)}`;
+
+    const topPoint = geometry.kind === "rect" ? { x: geometry.x + geometry.width / 2, y: geometry.y } : geometry.points.reduce((top, point) => (point.y < top.y ? point : top));
+
+    let text = existingText;
+    if (!text) {
+      text = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+      text.classList.add(PROGRESS_TEXT_CLASS, NODE_DECORATION_CLASS);
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("pointer-events", "none");
+      nodeElement.appendChild(text);
+    }
+    if (transform) text.setAttribute("transform", transform);
+    else text.removeAttribute("transform");
+    text.setAttribute("x", String(topPoint.x));
+    text.setAttribute("y", String(topPoint.y - PROGRESS_TEXT_GAP_PX));
+    // Only write when it actually changes — see the MutationObserver note on
+    // `onChartMutation` for why an unconditional write would loop.
+    const nextText = `${progressPercent}%`;
+    if (text.textContent !== nextText) text.textContent = nextText;
+  }
+
   /**
    * Apply each node's status colour and the live "current" highlight directly to
    * its rendered `.node` element, replacing the previous classes.
@@ -1250,8 +1548,15 @@ export class GraphCanvasComponent implements AfterViewInit {
       element.classList.remove(...stripClasses);
       const statusClass = styles[node.status]?.className;
       if (statusClass) element.classList.add(statusClass);
-      if (node.id === currentId) element.classList.add(CURRENT_NODE_CLASS);
-      if (this.resolveSubgraph(node)) element.classList.add(HAS_SUBGRAPH_CLASS);
+      if (node.id === currentId) {
+        element.classList.add(CURRENT_NODE_CLASS);
+        this.applyShapeOutlineOverlay(element, CURRENT_OUTLINE_CLASS, NODE_OUTLINE_OFFSET_PX);
+      } else {
+        this.removeShapeOutlineOverlay(element, CURRENT_OUTLINE_CLASS);
+      }
+      const hasSubgraph = !!this.resolveSubgraph(node);
+      if (hasSubgraph) element.classList.add(HAS_SUBGRAPH_CLASS);
+      this.applySubgraphBadge(element, hasSubgraph);
 
       // Detect transitions and trigger the generic pulse animations
       const prevStatus = this.previousStatuses.get(node.id);
@@ -1430,56 +1735,38 @@ export class GraphCanvasComponent implements AfterViewInit {
   private applyNodeProgressBars(): void {
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
-      const label = element?.querySelector(".nodeLabel") ?? element?.querySelector("span");
-      if (!element || !label) continue;
-
-      let progressWrap = element.querySelector(".task-graph-node-progress-wrap");
-      if (!progressWrap) {
-        progressWrap = document.createElement("div");
-        progressWrap.classList.add("task-graph-node-progress-wrap");
-
-        const progressElement = document.createElement("progress");
-        progressElement.classList.add("task-graph-node-progress");
-        progressElement.value = TASK_GRAPH_PROGRESS_MIN_PERCENT;
-        progressElement.max = TASK_GRAPH_PROGRESS_MAX_PERCENT;
-
-        const progressText = document.createElement("small");
-        progressWrap.append(progressElement, progressText);
-        label.append(progressWrap);
-      }
-
-      const progressPercent = this.readNodeProgressPercent(node.progressPercent);
-      progressWrap.classList.toggle("has-progress", progressPercent !== null);
-
-      const progressElement = progressWrap.querySelector("progress");
-      if (progressElement instanceof HTMLProgressElement) {
-        progressElement.value = progressPercent ?? TASK_GRAPH_PROGRESS_MIN_PERCENT;
-        progressElement.max = TASK_GRAPH_PROGRESS_MAX_PERCENT;
-      }
-
-      const progressText = progressWrap.querySelector("small");
-      // Only write when the text actually changes. Writing a non-empty
-      // `textContent` replaces the child text node, which is a childList
-      // mutation inside the subtree the host MutationObserver watches — an
-      // unconditional write would re-trigger `onChartMutation` → this method in
-      // an unbounded loop that freezes the page.
-      if (progressText) {
-        const nextText = progressPercent === null ? "" : `${progressPercent}%`;
-        if (progressText.textContent !== nextText) progressText.textContent = nextText;
-      }
+      if (!element) continue;
+      this.applyProgressTraceOverlay(element, this.readNodeProgressPercent(node.progressPercent));
     }
   }
 
+  /**
+   * Applies the `selected` class and its outline overlay to `selectedId`'s
+   * node, removing both from any other node.
+   *
+   * VALUE: Leaves the already-selected node's overlay untouched when called
+   * again with the same id (e.g. from `onChartMutation`, which calls this
+   * unconditionally on every mutation) — appending/removing an SVG element is
+   * a `childList` mutation the observer can't attribute to the child that
+   * moved (its `target` is the parent `.node` group, not the overlay), so an
+   * unconditional destroy-then-recreate here would re-trigger the observer on
+   * every one of its own passes: an infinite mutate → observe → mutate loop
+   * that freezes the tab.
+   */
   private applySelectedNodeClass(selectedId: string | null): void {
     const host = this.hostElement.nativeElement;
-    for (const nodeElement of host.querySelectorAll(".mermaid .node.selected")) {
-      nodeElement.classList.remove("selected");
-    }
-    if (!selectedId) return;
+    const selectedLink = selectedId ? (Array.from(host.querySelectorAll(".mermaid a")) as Element[]).find((linkElement) => this.readNodeIdFromLink(linkElement) === selectedId) : undefined;
+    const selectedNode = selectedLink?.querySelector(".node") ?? selectedLink?.closest(".node") ?? null;
 
-    const selectedLink = (Array.from(host.querySelectorAll(".mermaid a")) as Element[]).find((linkElement) => this.readNodeIdFromLink(linkElement) === selectedId);
-    const selectedNode = selectedLink?.querySelector(".node") ?? selectedLink?.closest(".node");
-    selectedNode?.classList.add("selected");
+    for (const nodeElement of host.querySelectorAll(".mermaid .node.selected")) {
+      if (nodeElement === selectedNode) continue;
+      nodeElement.classList.remove("selected");
+      this.removeShapeOutlineOverlay(nodeElement, SELECTED_OUTLINE_CLASS);
+    }
+    if (!selectedNode) return;
+
+    selectedNode.classList.add("selected");
+    this.applyShapeOutlineOverlay(selectedNode, SELECTED_OUTLINE_CLASS, NODE_OUTLINE_OFFSET_PX);
   }
 
   // ── Subgraph inline preview ───────────────────────────────────────
