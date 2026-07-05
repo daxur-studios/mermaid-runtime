@@ -48,12 +48,8 @@
     stroke: var(--app-color-fail, #f44336) !important;
   }
 
-  ::ng-deep .node.skipped .basic,
-  ::ng-deep .node.skipped .label-container,
-  ::ng-deep .node.skipped polygon,
-  ::ng-deep .node.skipped rect {
-    fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15)) !important;
-    stroke: var(--app-color-warn, #ffc107) !important;
+  ::ng-deep .node.skipped {
+    opacity: 0.5 !important;
   }
 
   // Not-yet-run nodes (the idle/template view): neutral, theme-aware treatment instead of

@@ -1,4 +1,4 @@
-﻿:host {
+:host {
   position: relative;
   display: block;
   width: 100%;
@@ -397,12 +397,8 @@
   stroke: var(--app-color-fail) !important;
 }
 
-:host ::ng-deep .mermaid .node.skipped .basic,
-:host ::ng-deep .mermaid .node.skipped .label-container,
-:host ::ng-deep .mermaid .node.skipped polygon:not(.mr-node-decoration),
-:host ::ng-deep .mermaid .node.skipped rect:not(.sg-detailed-box):not(.mr-node-decoration) {
-  fill: var(--app-color-warn-bg) !important;
-  stroke: var(--app-color-warn) !important;
+:host ::ng-deep .mermaid .node.skipped {
+  opacity: 0.5 !important;
 }
 
 :host ::ng-deep .mermaid .node.current span,
