@@ -130,6 +130,15 @@ export class GraphInspectorComponent {
     });
   }
 
+  protected formatProgressText(node: MermaidRuntime.Node): string {
+    let pct = node.progressPercent != null ? `${node.progressPercent}%` : '';
+    if (node.activeChildNodeProgresses && node.activeChildNodeProgresses.length > 0) {
+      const childPcts = node.activeChildNodeProgresses.map((p) => `${p}%`).join(' | ');
+      pct = pct ? `${pct} | ${childPcts}` : childPcts;
+    }
+    return pct;
+  }
+
   /**
    * Copy a compact, agent-friendly summary of the node to the clipboard.
    *
@@ -146,8 +155,8 @@ export class GraphInspectorComponent {
     }
     lines.push(`Node: ${node.title} (${node.id})`);
     lines.push(`Status: ${node.status}`);
-    if (node.progressPercent != null || node.progressLabel) {
-      const pct = node.progressPercent != null ? `${node.progressPercent}%` : '';
+    if (node.progressPercent != null || node.progressLabel || (node.activeChildNodeProgresses && node.activeChildNodeProgresses.length > 0)) {
+      const pct = this.formatProgressText(node);
       const label = node.progressLabel || '';
       lines.push(`Progress: ${label}${pct ? ` (${pct})` : ''}`);
     }

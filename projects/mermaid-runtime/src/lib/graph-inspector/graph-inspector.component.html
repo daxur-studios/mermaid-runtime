@@ -54,18 +54,25 @@
         <dd>{{ node.durationMs / 1000 | number : '1.1-2' }}s</dd>
       </div>
     }
-    @if (node.progressPercent != null) {
+    @if (node.progressPercent != null || (node.activeChildNodeProgresses && node.activeChildNodeProgresses.length > 0)) {
       <div>
         <dt>Progress</dt>
-        <dd>{{ node.progressPercent | number : '1.0-0' }}%</dd>
+        <dd>{{ formatProgressText(node) }}</dd>
       </div>
     }
   </dl>
 
-  @if (node.progressPercent != null) {
-    <div class="graph-inspector__progress">
-      <div class="graph-inspector__progress-bar" [style.width.%]="node.progressPercent"></div>
-    </div>
+  @if (node.progressPercent != null || (node.activeChildNodeProgresses && node.activeChildNodeProgresses.length > 0)) {
+    @if (node.progressPercent != null) {
+      <div class="graph-inspector__progress">
+        <div class="graph-inspector__progress-bar" [style.width.%]="node.progressPercent"></div>
+      </div>
+    }
+    @for (pct of node.activeChildNodeProgresses || []; track $index) {
+      <div class="graph-inspector__progress" style="opacity: 0.5; margin-top: 4px;">
+        <div class="graph-inspector__progress-bar" [style.width.%]="pct"></div>
+      </div>
+    }
     @if (node.progressLabel) {
       <p class="graph-inspector__progress-label">{{ node.progressLabel }}</p>
     }

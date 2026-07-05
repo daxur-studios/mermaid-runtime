@@ -193,6 +193,7 @@ export namespace MermaidRuntime {
     transitions?: Transition[] | null;
     progressPercent?: number | null;
     progressLabel?: string | null;
+    activeChildNodeProgresses?: number[] | null;
     inputRefs?: DataRef[] | null;
     outputRefs?: DataRef[] | null;
     contextRefs?: DataRef[] | null;

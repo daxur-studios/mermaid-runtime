@@ -1,4 +1,4 @@
-﻿import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, model, output, signal, untracked, viewChild } from "@angular/core";
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, model, output, signal, untracked, viewChild } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { MarkdownModule } from "ngx-markdown";
 import { Subscription } from "rxjs";
@@ -708,7 +708,10 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Joined node progress values — drives live progress-bar DOM updates. */
   private readonly progressKey = computed(() =>
     this.activeNodes()
-      .map((node) => `${node.id}:${node.progressPercent ?? ""}:${node.progressLabel ?? ""}`)
+      .map((node) => {
+        const childProgressesStr = node.activeChildNodeProgresses ? node.activeChildNodeProgresses.join("|") : "";
+        return `${node.id}:${node.progressPercent ?? ""}:${node.progressLabel ?? ""}:${childProgressesStr}`;
+      })
       .join(","),
   );
 
@@ -1466,53 +1469,114 @@ export class GraphCanvasComponent implements AfterViewInit {
    * revealed clockwise from its topmost point via `stroke-dasharray`/
    * `stroke-dashoffset`, plus a small percentage `<text>` above it.
    */
-  private applyProgressTraceOverlay(nodeElement: Element, progressPercent: number | null): void {
-    const existingPath = nodeElement.querySelector<SVGPathElement>(`:scope > .${PROGRESS_TRACE_CLASS}`);
+  private applyProgressTraceOverlay(
+    nodeElement: Element,
+    progressPercent: number | null,
+    activeChildNodeProgresses?: number[] | null,
+  ): void {
+    const existingPaths = Array.from(nodeElement.querySelectorAll<SVGPathElement>(`:scope > .${PROGRESS_TRACE_CLASS}`));
     const existingText = nodeElement.querySelector<SVGTextElement>(`:scope > .${PROGRESS_TEXT_CLASS}`);
 
-    const shapeEl = progressPercent === null ? null : this.findNodeShapeElement(nodeElement);
-    const geometry = shapeEl ? this.readOffsetGeometry(shapeEl, NODE_PROGRESS_TRACE_OFFSET_PX) : null;
-    if (progressPercent === null || !shapeEl || !geometry) {
-      existingPath?.remove();
+    const childProgresses = activeChildNodeProgresses
+      ? activeChildNodeProgresses
+          .map((p) => this.readNodeProgressPercent(p))
+          .filter((p): p is number => p !== null)
+      : null;
+
+    const hasProgress = progressPercent !== null || (childProgresses && childProgresses.length > 0);
+    const shapeEl = hasProgress ? this.findNodeShapeElement(nodeElement) : null;
+
+    if (!hasProgress || !shapeEl) {
+      existingPaths.forEach((p) => p.remove());
       existingText?.remove();
       return;
     }
 
     const transform = shapeEl.getAttribute("transform");
 
-    let path = existingPath;
-    if (!path) {
-      path = document.createElementNS(SVG_NAMESPACE, "path") as SVGPathElement;
-      path.classList.add(PROGRESS_TRACE_CLASS, NODE_DECORATION_CLASS);
-      path.setAttribute("fill", "none");
-      path.setAttribute("pointer-events", "none");
-      nodeElement.appendChild(path);
+    // Gather all progress configurations to render
+    const NODE_PROGRESS_STACK_OFFSET_PX = 4;
+    const allPercents: { percent: number; opacity: number; offset: number }[] = [];
+    if (progressPercent !== null) {
+      allPercents.push({
+        percent: progressPercent,
+        opacity: 1,
+        offset: NODE_PROGRESS_TRACE_OFFSET_PX,
+      });
     }
-    if (transform) path.setAttribute("transform", transform);
-    else path.removeAttribute("transform");
-    path.setAttribute("d", buildTopStartOutlinePath(geometry));
-    const pathLength = computeOutlinePerimeterLength(geometry);
-    path.style.strokeDasharray = `${pathLength}`;
-    path.style.strokeDashoffset = `${pathLength * (1 - progressPercent / 100)}`;
 
-    const topPoint = geometry.kind === "rect" ? { x: geometry.x + geometry.width / 2, y: geometry.y } : geometry.points.reduce((top, point) => (point.y < top.y ? point : top));
-
-    let text = existingText;
-    if (!text) {
-      text = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-      text.classList.add(PROGRESS_TEXT_CLASS, NODE_DECORATION_CLASS);
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("pointer-events", "none");
-      nodeElement.appendChild(text);
+    if (childProgresses) {
+      childProgresses.forEach((percent) => {
+        allPercents.push({
+          percent,
+          opacity: 0.5,
+          offset: NODE_PROGRESS_TRACE_OFFSET_PX + allPercents.length * NODE_PROGRESS_STACK_OFFSET_PX,
+        });
+      });
     }
-    if (transform) text.setAttribute("transform", transform);
-    else text.removeAttribute("transform");
-    text.setAttribute("x", String(topPoint.x));
-    text.setAttribute("y", String(topPoint.y - PROGRESS_TEXT_GAP_PX));
-    // Only write when it actually changes — see the MutationObserver note on
-    // `onChartMutation` for why an unconditional write would loop.
-    const nextText = `${progressPercent}%`;
-    if (text.textContent !== nextText) text.textContent = nextText;
+
+    // Ensure we have exactly allPercents.length path elements
+    const paths: SVGPathElement[] = [];
+    for (let i = 0; i < allPercents.length; i++) {
+      let path = existingPaths[i];
+      if (!path) {
+        path = document.createElementNS(SVG_NAMESPACE, "path") as SVGPathElement;
+        path.classList.add(PROGRESS_TRACE_CLASS, NODE_DECORATION_CLASS);
+        path.setAttribute("fill", "none");
+        path.setAttribute("pointer-events", "none");
+        nodeElement.appendChild(path);
+      }
+      paths.push(path);
+    }
+    // Remove excess paths
+    for (let i = allPercents.length; i < existingPaths.length; i++) {
+      existingPaths[i].remove();
+    }
+
+    // Apply values to each path
+    for (let i = 0; i < allPercents.length; i++) {
+      const config = allPercents[i];
+      const path = paths[i];
+      const geometry = this.readOffsetGeometry(shapeEl, config.offset);
+      if (!geometry) continue;
+
+      if (transform) path.setAttribute("transform", transform);
+      else path.removeAttribute("transform");
+
+      path.setAttribute("d", buildTopStartOutlinePath(geometry));
+      const pathLength = computeOutlinePerimeterLength(geometry);
+      path.style.strokeDasharray = `${pathLength}`;
+      path.style.strokeDashoffset = `${pathLength * (1 - config.percent / 100)}`;
+      path.style.opacity = `${config.opacity}`;
+    }
+
+    // Update text above the outermost path
+    const outermostConfig = allPercents[allPercents.length - 1];
+    const outermostGeometry = this.readOffsetGeometry(shapeEl, outermostConfig.offset);
+    if (outermostGeometry) {
+      const topPoint = outermostGeometry.kind === "rect"
+        ? { x: outermostGeometry.x + outermostGeometry.width / 2, y: outermostGeometry.y }
+        : outermostGeometry.points.reduce((top, point) => (point.y < top.y ? point : top));
+
+      let text = existingText;
+      if (!text) {
+        text = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+        text.classList.add(PROGRESS_TEXT_CLASS, NODE_DECORATION_CLASS);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("pointer-events", "none");
+        nodeElement.appendChild(text);
+      }
+      if (transform) text.setAttribute("transform", transform);
+      else text.removeAttribute("transform");
+      text.setAttribute("x", String(topPoint.x));
+      text.setAttribute("y", String(topPoint.y - PROGRESS_TEXT_GAP_PX));
+
+      // Show all percentages, e.g. "33% | 20% | 90%"
+      const nextText = allPercents.map((p) => `${p.percent}%`).join(" | ");
+      if (text.textContent !== nextText) text.textContent = nextText;
+    } else {
+      existingText?.remove();
+    }
   }
 
   /**
@@ -1736,7 +1800,11 @@ export class GraphCanvasComponent implements AfterViewInit {
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       if (!element) continue;
-      this.applyProgressTraceOverlay(element, this.readNodeProgressPercent(node.progressPercent));
+      this.applyProgressTraceOverlay(
+        element,
+        this.readNodeProgressPercent(node.progressPercent),
+        node.activeChildNodeProgresses,
+      );
     }
   }
 

@@ -17,6 +17,11 @@ import {
   GraphCanvasComponent,       // canvas only — compose your own chrome
   GraphInspectorComponent,    // inspector sidebar — project into canvas [detail] slot
   GraphCameraComponent,       // generic pan/zoom wrapper
+  MinimapComponent,           // <mr-minimap> — relocatable corner minimap
+  GraphCameraControlsComponent, // <mr-graph-camera-controls> — relocatable zoom/pan/direction buttons
+  GraphBreadcrumbComponent,   // <mr-graph-breadcrumb> — relocatable subgraph-depth trail
+  GraphBreadcrumbEntry,       // { label, depth } — breadcrumb input shape
+  TaskGraphReplayComponent,   // <mr-task-graph-replay> — timeline playback for recorded runs
   MermaidRuntime,             // data model namespace
   TaskGraphRefLoader,         // interface for the ref-loader seam
   TaskGraphRefRequest,        // request shape passed to loadRef()
@@ -60,6 +65,64 @@ imports: [TaskGraphComponent]
   (nodeContextMenu)="onNodeContextMenu($event)"
 />
 ```
+
+## Theming (required, not optional)
+
+The canvas paints all status colours, outlines, and progress traces via CSS custom properties — it ships no colours of its own. The host **must** define, somewhere global:
+
+```scss
+--app-color-pass: #4caf50;    --app-color-pass-bg: rgba(76, 175, 80, 0.15);
+--app-color-fail: #f44336;    --app-color-fail-bg: rgba(244, 67, 54, 0.15);
+--app-color-warn: #ffc107;    --app-color-warn-bg: rgba(255, 193, 7, 0.15);
+--app-color-active: #2196f3; --app-color-active-bg: rgba(33, 150, 243, 0.15);
+```
+
+Most fill/background rules fall back to a built-in colour if you skip this, but a few stroke rules — the **progress trace** and the **minimap node dots** — have no fallback and render invisible without `--app-color-pass`/`--app-color-fail` defined. Also relies on Angular Material's M3 tokens (`--mat-sys-primary`, `--mat-sys-surface`, `--mat-sys-outline(-variant)`, `--mat-sys-on-surface(-variant)`, `--mat-sys-surface-container(-high)`) for outlines/badges/chrome — already present if the host app applies Angular Material's `mat.theme(...)`.
+
+## Built-in overlays (automatic, no inputs)
+
+Paint from data you already pass — nothing to wire up beyond the theming vars above:
+
+- **Selected ring** (`[selectedNodeId]`) and **current ring** (`[currentNodeId]`) are two separate rings, same offset today — a node that's both shows overlapping, not nested, rings.
+- **Progress trace** grows along the node border with `progressPercent`; green (`--app-color-pass`) normally, red (`--app-color-fail`) once `status: 'failed'`.
+- **Subgraph corner badge**: drillable nodes get a solid accent border + a small "+" badge top-right, not a dashed outline.
+
+## Relocating built-in chrome (minimap / camera controls / breadcrumb)
+
+Three pieces of chrome render built-in by default: corner minimap, floating zoom/pan/direction controls, and the subgraph breadcrumb. Set the matching `*Placement` input to `'host'` and render the standalone component yourself if your layout needs them elsewhere (e.g. a shared app-shell overlay):
+
+```html
+<mr-graph-canvas #canvas [nodes]="nodes()" [minimapPlacement]="'host'" [cameraControlsPlacement]="'host'" [breadcrumbPlacement]="'host'">
+  ...
+</mr-graph-canvas>
+
+<!-- Rendered wherever your layout wants them, outside the canvas: -->
+<mr-minimap
+  [contentRect]="canvas.minimapContentRect()"
+  [viewportRect]="canvas.minimapViewportRect()"
+  [nodes]="canvas.minimapNodes()"
+  (jump)="canvas.centerOnPoint($event)"
+/>
+<mr-graph-camera-controls [canvas]="canvas" />
+<mr-graph-breadcrumb [breadcrumbs]="canvas.breadcrumb()" (depthSelected)="canvas.goToDepth($event)" />
+```
+
+`showMinimap`/`showBreadcrumb` turn each off entirely instead of relocating it. `[direction]` (`model<'TD'|'LR'>`) sets flow direction; `[backgroundEffect]` (`'grid-dots'|'grid'|'dots'|'none'|'custom'`) controls the viewport background; `[mermaidConfig]` overrides the whole Mermaid render config for hosts that need custom `themeVariables` beyond `[mermaidTheme]`.
+
+## Replaying a recorded run
+
+`TaskGraphReplayComponent` scrubs/plays a recorded `MermaidRuntime.ExecutionEvent[]` and reconstructs node status/progress at each point, without re-executing anything:
+
+```html
+<mr-task-graph-replay
+  [events]="executionEvents()"
+  [baseNodes]="nodes()"
+  [transitions]="transitions()"
+  (stateChange)="onReplayState($event)"
+/>
+```
+
+`(stateChange)` emits `{ nodes, currentNodeId, currentEvent, isReplaying }` — feed `nodes`/`currentNodeId` straight into `<mr-task-graph>`'s `[nodes]`/`[currentNodeId]`.
 
 ## Node shape
 

@@ -29,6 +29,21 @@ Peer dependencies you need in your project:
 
 `ngx-markdown` is optional — only required if you use `GraphCanvasComponent` directly (it renders the Mermaid block via `MarkdownModule`).
 
+## Theming
+
+The canvas paints status colours, outlines, and progress traces through CSS custom properties — it defines no colours of its own. Your host app must set:
+
+| Variable (+ `-bg` variant) | Used for | Fallback if unset |
+|---|---|---|
+| `--app-color-pass` | complete/success outline, progress trace, minimap dot | **none on some rules** — the progress trace and minimap render invisible without it |
+| `--app-color-fail` | failed outline, progress trace on error | **none on some rules** — same as above |
+| `--app-color-warn` | warn/skipped outline | node fill/background rules fall back to a built-in colour; a few stroke rules don't |
+| `--app-color-active` | running/current-node outline | yes, built-in default |
+
+Also relies on Angular Material's M3 design tokens (`--mat-sys-primary`, `--mat-sys-surface`, `--mat-sys-outline`, `--mat-sys-outline-variant`, `--mat-sys-on-surface`, `--mat-sys-on-surface-variant`, `--mat-sys-surface-container(-high)`) for outlines, badges, and chrome. If your project already applies Angular Material's theme (`@include mat.theme(...)`), these exist already — nothing extra to do.
+
+Optional decorative variables (grid/background effect colours, sizes, hover overlay) all ship with sane defaults — see `graph-canvas.component.scss` if you want to override them.
+
 ## Core components
 
 ### `TaskGraphComponent` — drop-in viewer
@@ -151,6 +166,34 @@ into a compact stack of short rows. Omit `direction` to inherit the outer flow.
 
 Content-agnostic pan/zoom camera. Not Mermaid-specific — use it to wrap any SVG or DOM content.
 
+### Built-in chrome & relocating it
+
+`<mr-graph-canvas>`/`<mr-task-graph>` render three pieces of chrome automatically: a corner **minimap**, floating **camera controls** (zoom/pan/direction toggle), and a **breadcrumb** trail while inside a subgraph. Turn any off (`showMinimap`, `showBreadcrumb`), or set its placement input to `'host'` and render the standalone component yourself, wherever your layout needs it:
+
+| Chrome | Placement input | Standalone component | Bind to |
+|---|---|---|---|
+| Minimap | `minimapPlacement` | `<mr-minimap>` | `canvas.minimapContentRect()` / `minimapViewportRect()` / `minimapNodes()`, `(jump)="canvas.centerOnPoint($event)"` |
+| Camera controls | `cameraControlsPlacement` | `<mr-graph-camera-controls [canvas]="canvas">` | pass the `#canvas` template ref directly |
+| Breadcrumb | `breadcrumbPlacement` | `<mr-graph-breadcrumb [breadcrumbs]="canvas.breadcrumb()" (depthSelected)="...">` | canvas's `breadcrumb()` signal |
+| Inspector | `inspectorPlacement` | `<mr-graph-inspector>` | project into `[detail]` yourself instead of relying on `<mr-task-graph>`'s slot |
+
+`[direction]` (`'TD' | 'LR'`, two-way via `model()`) sets flow direction; `[backgroundEffect]` (`'grid-dots' | 'grid' | 'dots' | 'none' | 'custom'`) controls the viewport background; `[mermaidConfig]` lets advanced hosts override the whole Mermaid render config instead of just `[mermaidTheme]`.
+
+### `TaskGraphReplayComponent` — execution timeline playback
+
+Scrubs/plays through a recorded `MermaidRuntime.ExecutionEvent[]` history and reconstructs node status/progress at each point in time, so a finished run can be replayed without re-executing it:
+
+```html
+<mr-task-graph-replay
+  [events]="executionEvents()"
+  [baseNodes]="nodes()"
+  [transitions]="transitions()"
+  (stateChange)="onReplayState($event)"
+/>
+```
+
+`(stateChange)` emits `{ nodes, currentNodeId, currentEvent, isReplaying }` — feed `nodes`/`currentNodeId` straight into `<mr-task-graph>`'s `[nodes]`/`[currentNodeId]` to drive the same visuals a live run would.
+
 ## Data model
 
 Everything lives in the `MermaidRuntime` namespace:
@@ -199,6 +242,15 @@ const decorations: Record<string, MermaidRuntime.NodeDecoration> = {
   'step-1':        { displayTitle: 'Custom label' },
 };
 ```
+
+### Built-in node overlays
+
+These paint automatically from data you already pass — no extra inputs — but need the [Theming](#theming) CSS variables to show up in the right colour:
+
+- **Selected ring** — around whichever node `[selectedNodeId]` (or a user click) points to.
+- **Current ring** — a separate ring around `[currentNodeId]`, the live execution focus. Both rings use the same offset today, so a node that's simultaneously selected *and* current shows overlapping rather than nested rings.
+- **Progress trace** — draws along the node's border as `progressPercent` rises. Coloured `--app-color-pass` (green) by default, `--app-color-fail` (red) once the node's `status` is `'failed'`.
+- **Subgraph corner badge** — a drillable node (resolved subgraph) gets a solid accent border plus a small "+" badge in its top-right corner, instead of a dashed outline.
 
 ## Subgraph drill-down
 
