@@ -1,4 +1,4 @@
-:host {
+﻿:host {
   position: relative;
   display: block;
   width: 100%;
@@ -126,50 +126,14 @@
   padding: 0.75rem;
 }
 
-// Breadcrumb overlay — shown only while inside a subgraph.
+// Breadcrumb overlay positioning; chip styling lives in GraphBreadcrumbComponent.
 .graph-canvas__breadcrumb {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
   max-width: calc(100% - 24px);
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: 999px;
-  background: var(--mat-sys-surface-container);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
-
-.graph-canvas__crumb {
-  padding: 0.15rem 0.5rem;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--mat-sys-on-surface-variant);
-  font-size: 0.76rem;
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--mat-sys-on-surface);
-  }
-
-  &--current {
-    color: var(--mat-sys-on-surface);
-    font-weight: 600;
-    cursor: default;
-  }
-}
-
-.graph-canvas__crumb-sep {
-  color: var(--mat-sys-outline);
-  font-size: 0.8rem;
-}
-
 @media (max-width: 900px) {
   .graph-canvas__layout--with-detail {
     grid-template-columns: minmax(0, 1fr);
@@ -273,6 +237,10 @@
   margin-top: 0.28rem;
   opacity: 0;
   transition: opacity 140ms ease;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
 }
 
 :host ::ng-deep .mermaid .task-graph-node-progress-wrap small {
@@ -347,61 +315,73 @@
   user-select: none;
   opacity: 0.85;
 
-  .sg-svg {
-    overflow: visible;
-  }
+  .gp-simple-root {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
-  // Simple dot preview styles
-  .sg-edge {
-    stroke: var(--mat-sys-outline);
-    stroke-width: 1;
-  }
-
-  .sg-dot {
-    fill: var(--mat-sys-surface-container-high);
-    stroke: var(--mat-sys-outline);
-    stroke-width: 0.75;
-
-    &--terminal {
-      fill: var(--mat-sys-primary);
-      stroke: var(--mat-sys-primary);
+    svg {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+      margin: auto;
     }
-  }
 
-  // Detailed box preview styles
-  .sg-detailed-edge {
-    stroke: var(--mat-sys-outline);
-    stroke-dasharray: 2 1;
-    stroke-width: 0.75;
-    opacity: 0.6;
-  }
+    // Force nodes to render as simple small circles
+    .node circle {
+      r: 6px !important;
+      fill: var(--app-color-idle-bg, var(--mat-sys-surface-container-high, rgba(255, 255, 255, 0.06))) !important;
+      stroke: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.4))) !important;
+      stroke-width: 1.5px !important;
+    }
 
-  .sg-detailed-box {
-    fill: var(--mat-sys-surface-container-high);
-    stroke: var(--mat-sys-outline);
-    stroke-width: 0.75;
+    .node.running circle {
+      fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15)) !important;
+      stroke: var(--app-color-active, #2196f3) !important;
+    }
 
-    &.running {
-      fill: var(--app-color-active-bg, rgba(33, 150, 243, 0.15));
-      stroke: var(--app-color-active, #2196f3);
+    .node.done circle,
+    .node.passed circle,
+    .node.success circle {
+      fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15)) !important;
+      stroke: var(--app-color-pass, #4caf50) !important;
     }
-    &.done, &.passed, &.success {
-      fill: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
-      stroke: var(--app-color-pass, #4caf50);
-    }
-    &.failed, &.error {
-      fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
-      stroke: var(--app-color-fail, #f44336);
-    }
-    &.skipped {
-      fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15));
-      stroke: var(--app-color-warn, #ffc107);
-    }
-  }
 
-  .sg-more {
-    fill: var(--mat-sys-on-surface-variant);
-    font-size: 7px;
+    .node.failed circle,
+    .node.error circle {
+      fill: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15)) !important;
+      stroke: var(--app-color-fail, #f44336) !important;
+    }
+
+    .node.skipped circle {
+      fill: var(--app-color-warn-bg, rgba(255, 193, 7, 0.15)) !important;
+      stroke: var(--app-color-warn, #ffc107) !important;
+    }
+
+    // Force edges to be slightly thicker and clean
+    path.flowchart-link,
+    .edgePath .path,
+    .edgePath path {
+      stroke: var(--app-color-idle, var(--mat-sys-outline, rgba(255, 255, 255, 0.3))) !important;
+      stroke-width: 2.5px !important;
+      fill: none !important;
+      opacity: 0.65;
+    }
+
+    // Hide text labels inside nodes
+    .node .nodeLabel,
+    .node tspan,
+    .node foreignObject {
+      display: none !important;
+    }
+
+    // Hide arrowheads/markers for a clean far-away overview
+    marker,
+    .markerPath {
+      display: none !important;
+    }
   }
 }
 
@@ -512,7 +492,9 @@
 
 // 1. Base flowchart lines transition smoothly
 :host ::ng-deep .mermaid path.flowchart-link {
-  transition: stroke 0.3s ease, stroke-width 0.3s ease;
+  transition:
+    stroke 0.3s ease,
+    stroke-width 0.3s ease;
 }
 
 // 2. Settled Connection States (Solid colors)

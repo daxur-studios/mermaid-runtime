@@ -101,7 +101,12 @@ export namespace MermaidRuntime {
    */
   export interface NodeDecoration {
     displayTitle?: string;
-    shape?: 'rect' | 'diamond';
+    /**
+     * 'subroutine' renders Mermaid's double-bracket "predefined process" shape —
+     * the idiomatic fit for a node that calls out to another task/execution
+     * rather than doing its own work.
+     */
+    shape?: 'rect' | 'diamond' | 'subroutine';
   }
 
   /** Reference to structured input/output/context data stored outside the node. */

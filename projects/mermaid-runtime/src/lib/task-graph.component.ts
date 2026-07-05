@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, model, output, viewChild } from '@angular/core';
+﻿import { ChangeDetectionStrategy, Component, input, model, output, viewChild } from '@angular/core';
 
 import { MermaidRuntime } from './task-graph-model';
 import {
@@ -146,6 +146,9 @@ export class TaskGraphComponent {
 
   /** Whether to render the breadcrumb overlay while inside a subgraph. */
   readonly showBreadcrumb = input<boolean>(true);
+
+  /** Whether the breadcrumb renders built-in, or is suppressed for host-rendered chrome. */
+  readonly breadcrumbPlacement = input<'built-in' | 'host'>('built-in');
 
   /**
    * Whether drillable nodes show a small, static thumbnail of their child graph.

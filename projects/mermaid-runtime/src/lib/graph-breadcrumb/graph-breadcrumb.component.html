@@ -1,0 +1,16 @@
+﻿<nav class="graph-breadcrumb" aria-label="Subgraph path">
+  @for (crumb of breadcrumbs(); track crumb.depth; let last = $last) {
+    <button
+      type="button"
+      class="graph-breadcrumb__crumb"
+      [class.graph-breadcrumb__crumb--current]="last"
+      [disabled]="last"
+      (click)="depthSelected.emit(crumb.depth)"
+    >
+      {{ crumb.label }}
+    </button>
+    @if (!last) {
+      <span class="graph-breadcrumb__separator" aria-hidden="true">&rsaquo;</span>
+    }
+  }
+</nav>

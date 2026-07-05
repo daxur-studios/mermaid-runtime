@@ -1,4 +1,4 @@
-<div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()">
+﻿<div class="graph-canvas__layout" [class.graph-canvas__layout--with-detail]="showDetail()">
   <div
     class="graph-canvas__viewport"
     #viewport
@@ -32,23 +32,12 @@
       </button>
     }
 
-    @if (showBreadcrumb() && breadcrumb().length > 0) {
-      <nav class="graph-canvas__breadcrumb" aria-label="Subgraph path">
-        @for (crumb of breadcrumb(); track crumb.depth; let last = $last) {
-          <button
-            type="button"
-            class="graph-canvas__crumb"
-            [class.graph-canvas__crumb--current]="last"
-            [disabled]="last"
-            (click)="goToDepth(crumb.depth)"
-          >
-            {{ crumb.label }}
-          </button>
-          @if (!last) {
-            <span class="graph-canvas__crumb-sep" aria-hidden="true">›</span>
-          }
-        }
-      </nav>
+    @if (showBreadcrumb() && breadcrumbPlacement() === 'built-in' && breadcrumb().length > 0) {
+      <mr-graph-breadcrumb
+        class="graph-canvas__breadcrumb"
+        [breadcrumbs]="breadcrumb()"
+        (depthSelected)="goToDepth($event)"
+      />
     }
 
     <!-- Host-supplied viewport overlays (extra controls, minimap, legends). -->
@@ -68,3 +57,4 @@
   <!-- Host-supplied side detail (inspector/sidebar); reserved only when showDetail. -->
   <ng-content select="[detail]"></ng-content>
 </div>
+
