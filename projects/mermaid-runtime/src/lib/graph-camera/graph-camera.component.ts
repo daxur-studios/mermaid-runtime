@@ -228,6 +228,29 @@ export class GraphCameraComponent {
     this.animateCameraTo({ x: 0, y: 0, scale: 1 });
   }
 
+  /**
+   * Apply an explicit camera state.
+   *
+   * VALUE: Lets callers temporarily neutralize zoom/pan around a structural
+   * re-render, then restore or recompute the final view once layout stabilizes,
+   * without faking wheel/pan input through the DOM.
+   */
+  setCameraState(state: GraphCameraState, options?: { animate?: boolean }): void {
+    const next: GraphCameraState = {
+      x: state.x,
+      y: state.y,
+      scale: clamp(state.scale, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM),
+    };
+
+    if (options?.animate === false) {
+      this.cancelCameraAnimation();
+      this.camera.set(next);
+      return;
+    }
+
+    this.animateCameraTo(next);
+  }
+
   /** Frame the whole projected content so all of it is visible. */
   fitAll(): void {
     const naturalRect = this.measureContentRect();

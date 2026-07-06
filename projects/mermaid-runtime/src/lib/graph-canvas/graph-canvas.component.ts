@@ -5,7 +5,7 @@ import { Subscription } from "rxjs";
 import mermaid from "mermaid";
 
 import { MermaidRuntime } from "../task-graph-model";
-import { GraphCameraComponent, type GraphRect } from "../graph-camera/graph-camera.component";
+import { GraphCameraComponent, type GraphCameraState, type GraphRect } from "../graph-camera/graph-camera.component";
 import { MinimapComponent } from "../minimap/minimap.component";
 import { GraphBreadcrumbComponent, type GraphBreadcrumbEntry } from "../graph-breadcrumb/graph-breadcrumb.component";
 import { buildMermaidRuntimeConfig, type MermaidRuntimeConfig } from "../mermaid-theme";
@@ -52,6 +52,18 @@ interface GraphFrame {
   label: string;
   /** The child graph rendered at this level. */
   graph: MermaidRuntime.Graph;
+}
+
+/**
+ * Camera snapshot captured before a structural Mermaid re-render.
+ *
+ * VALUE: Lets the canvas temporarily render Mermaid at identity scale so
+ * `htmlLabels` measure in unzoomed space, then either restore the old camera or
+ * replace it with a newly-fitted one after layout settles.
+ */
+interface PendingStructuralRerender {
+  token: number;
+  previousCameraState: GraphCameraState;
 }
 
 
@@ -207,6 +219,41 @@ const NODE_DECORATION_CLASS = "mr-node-decoration";
  * lower bound for larger running sets.
  */
 const FOLLOW_MAX_ZOOM = 1.4;
+
+/**
+ * Camera state used while Mermaid performs a structural re-render.
+ *
+ * VALUE: Rendering the SVG at identity scale avoids zoom-dependent
+ * `foreignObject`/`htmlLabels` measurement drift during direction switches and
+ * subgraph navigation.
+ */
+const IDENTITY_CAMERA_STATE: GraphCameraState = { x: 0, y: 0, scale: 1 };
+
+/**
+ * Number of consecutive animation frames whose SVG bounds must match before the
+ * layout is considered settled.
+ *
+ * VALUE: One frame is too eager for Chromium's `foreignObject` label layout;
+ * requiring two equal samples avoids fitting/restoring against a transient box.
+ */
+const STRUCTURAL_LAYOUT_STABLE_FRAME_COUNT = 2;
+
+/**
+ * Maximum number of animation frames spent waiting for a structural Mermaid
+ * render to settle.
+ *
+ * VALUE: Prevents a broken SVG/layout edge case from leaving the camera pinned
+ * at identity forever.
+ */
+const STRUCTURAL_LAYOUT_MAX_WAIT_FRAMES = 24;
+
+/**
+ * Tolerance (px) for considering two successive SVG bounds equal.
+ *
+ * VALUE: Ignores sub-pixel jitter between animation frames while still catching
+ * real label-size changes.
+ */
+const STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX = 0.5;
 
 /**
  * Lowest valid percentage shown in a task graph node progress bar.
@@ -736,6 +783,18 @@ export class GraphCanvasComponent implements AfterViewInit {
 
   private followFramePending = false;
 
+  /** Last structural Mermaid source rendered into the canvas. */
+  private lastStructureRenderKey: string | null = null;
+
+  /** Active structural re-render waiting for its post-render layout to settle. */
+  private pendingStructuralRerender: PendingStructuralRerender | null = null;
+
+  /** Pending animation frame for structural-layout settling. */
+  private structuralLayoutSettleFrame: number | null = null;
+
+  /** Monotonic token for invalidating stale structural-layout settle loops. */
+  private structuralLayoutToken = 0;
+
   /**
    * Track previous status of each node.
    *
@@ -792,9 +851,15 @@ export class GraphCanvasComponent implements AfterViewInit {
       chartObserver.disconnect();
       this.clearReplayAnimationFrame();
       this.clearReplayAnimationTimer();
+      this.cancelStructuralLayoutSettle();
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
+
+    effect(() => {
+      const structureKey = this.flowMarkdown();
+      untracked(() => this.prepareStructuralRerender(structureKey));
+    });
 
     effect(() => {
       this.direction();
@@ -1072,6 +1137,12 @@ export class GraphCanvasComponent implements AfterViewInit {
     this.applySubgraphPreviews();
     this.applyNodeProgressBars();
 
+    const pendingStructuralRerender = this.pendingStructuralRerender;
+    if (pendingStructuralRerender) {
+      this.waitForStableStructuralLayout(pendingStructuralRerender);
+      return;
+    }
+
     this.updateMinimap();
 
     if (this.followActive() && this.activeFocusId()) {
@@ -1083,6 +1154,147 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.hasFitInitialView = true;
       requestAnimationFrame(() => this.cameraRef().fitAll());
     }
+  }
+
+  /**
+   * Snapshot the current camera and neutralize the scene transform before a
+   * structural Mermaid re-render lands.
+   *
+   * VALUE: `htmlLabels` now measure at scale 1 instead of whatever zoom the user
+   * currently has applied, removing the node/text size drift that otherwise shows
+   * up after direction switches and subgraph navigation.
+   */
+  private prepareStructuralRerender(structureKey: string): void {
+    if (this.lastStructureRenderKey === null) {
+      this.lastStructureRenderKey = structureKey;
+      return;
+    }
+    if (this.lastStructureRenderKey === structureKey) {
+      return;
+    }
+
+    this.lastStructureRenderKey = structureKey;
+    const camera = this.readCameraComponent();
+    if (!camera) {
+      return;
+    }
+
+    this.cancelStructuralLayoutSettle();
+    this.pendingStructuralRerender = {
+      token: ++this.structuralLayoutToken,
+      previousCameraState: camera.cameraState(),
+    };
+    camera.setCameraState(IDENTITY_CAMERA_STATE, { animate: false });
+  }
+
+  /**
+   * Wait for Mermaid's post-render SVG bounds to stop changing before any fit or
+   * camera restore runs.
+   *
+   * VALUE: Prevents the camera from measuring a transient layout while Chromium
+   * is still settling `foreignObject` label sizes.
+   */
+  private waitForStableStructuralLayout(pending: PendingStructuralRerender): void {
+    this.cancelStructuralLayoutSettle();
+
+    let stableFrameCount = 0;
+    let sampledFrameCount = 0;
+    let previousBounds: DOMRect | null = null;
+
+    const sampleLayout = (): void => {
+      if (this.pendingStructuralRerender?.token !== pending.token) {
+        this.structuralLayoutSettleFrame = null;
+        return;
+      }
+
+      sampledFrameCount++;
+      const bounds = this.measureRenderedSvgBounds();
+      if (bounds && previousBounds && this.sameSvgBounds(bounds, previousBounds)) {
+        stableFrameCount++;
+      } else if (bounds) {
+        stableFrameCount = 1;
+      } else {
+        stableFrameCount = 0;
+      }
+      previousBounds = bounds;
+
+      if (stableFrameCount >= STRUCTURAL_LAYOUT_STABLE_FRAME_COUNT || sampledFrameCount >= STRUCTURAL_LAYOUT_MAX_WAIT_FRAMES) {
+        this.structuralLayoutSettleFrame = null;
+        if (this.pendingStructuralRerender?.token === pending.token) {
+          this.pendingStructuralRerender = null;
+          this.finalizeStructuralRerender(pending.previousCameraState);
+        }
+        return;
+      }
+
+      this.structuralLayoutSettleFrame = requestAnimationFrame(sampleLayout);
+    };
+
+    this.structuralLayoutSettleFrame = requestAnimationFrame(sampleLayout);
+  }
+
+  /**
+   * Finish a structural Mermaid re-render after its layout settles.
+   *
+   * VALUE: The camera either resumes follow, fits a new level/direction change,
+   * or restores the user's prior viewport without ever measuring a stale label
+   * box from the in-flight render.
+   */
+  private finalizeStructuralRerender(previousCameraState: GraphCameraState): void {
+    this.updateMinimap();
+
+    if (this.followActive() && this.activeFocusId()) {
+      this.requestFrameActiveNode();
+      return;
+    }
+
+    if (!this.hasFitInitialView) {
+      this.hasFitInitialView = true;
+      this.cameraRef().fitAll();
+      return;
+    }
+
+    this.cameraRef().setCameraState(previousCameraState, { animate: false });
+  }
+
+  /** Cancel any in-flight structural-layout settle loop. */
+  private cancelStructuralLayoutSettle(): void {
+    if (this.structuralLayoutSettleFrame === null) {
+      return;
+    }
+    cancelAnimationFrame(this.structuralLayoutSettleFrame);
+    this.structuralLayoutSettleFrame = null;
+  }
+
+  /** Safe access to the child camera before/after view init. */
+  private readCameraComponent(): GraphCameraComponent | null {
+    try {
+      return this.cameraRef();
+    } catch {
+      return null;
+    }
+  }
+
+  /** Read the rendered Mermaid SVG's current on-screen bounds. */
+  private measureRenderedSvgBounds(): DOMRect | null {
+    const svg = this.hostElement.nativeElement.querySelector(".mermaid svg");
+    if (!(svg instanceof SVGSVGElement)) {
+      return null;
+    }
+
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0) {
+      return null;
+    }
+    return bounds;
+  }
+
+  /** True when two successive SVG bounds are equal within the configured tolerance. */
+  private sameSvgBounds(current: DOMRect, previous: DOMRect): boolean {
+    return Math.abs(current.width - previous.width) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX
+      && Math.abs(current.height - previous.height) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX
+      && Math.abs(current.x - previous.x) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX
+      && Math.abs(current.y - previous.y) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX;
   }
 
   private updateMinimap(): void {
