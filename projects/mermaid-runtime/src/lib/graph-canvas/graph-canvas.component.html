@@ -16,14 +16,11 @@
     <mr-graph-camera
       class="graph-canvas__camera"
       [controlsPlacement]="cameraControlsPlacement()"
+      [direction]="direction()"
+      (directionChange)="direction.set($event)"
       (userInteract)="onUserInteract()"
     >
-      <markdown
-        [data]="flowMarkdown()"
-        mermaid
-        [mermaidOptions]="mermaidOptions()"
-        class="graph-canvas__mermaid"
-      ></markdown>
+      <div #mermaidHost class="graph-canvas__mermaid mermaid"></div>
     </mr-graph-camera>
 
     @if (showRecenterChip()) {
@@ -44,13 +41,15 @@
     <ng-content select="[overlay]"></ng-content>
 
     @if (showMinimap() && minimapPlacement() === 'built-in') {
-      <mr-minimap
-        class="graph-canvas__minimap"
-        [contentRect]="minimapContentRect()"
-        [viewportRect]="minimapViewportRect()"
-        [nodes]="minimapNodes()"
-        (jump)="centerOnPoint($event)"
-      />
+      <div class="graph-canvas__minimap-shell">
+        <mr-minimap
+          class="graph-canvas__minimap"
+          [contentRect]="minimapContentRect()"
+          [viewportRect]="minimapViewportRect()"
+          [nodes]="minimapNodes()"
+          (jump)="centerOnPoint($event)"
+        />
+      </div>
     }
   </div>
 

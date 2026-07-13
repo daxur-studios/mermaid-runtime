@@ -1,6 +1,5 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, model, output, signal, untracked, viewChild } from "@angular/core";
 import { CommonModule } from "@angular/common";
-import { MarkdownModule } from "ngx-markdown";
 import { Subscription } from "rxjs";
 import mermaid from "mermaid";
 
@@ -8,9 +7,29 @@ import { MermaidRuntime } from "../task-graph-model";
 import { GraphCameraComponent, type GraphCameraState, type GraphRect } from "../graph-camera/graph-camera.component";
 import { MinimapComponent } from "../minimap/minimap.component";
 import { GraphBreadcrumbComponent, type GraphBreadcrumbEntry } from "../graph-breadcrumb/graph-breadcrumb.component";
-import { buildMermaidRuntimeConfig, type MermaidRuntimeConfig } from "../mermaid-theme";
+import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, type MermaidRuntimeConfig } from "../mermaid-theme";
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
+import { LayoutStabilityTracker } from "./layout-stability";
+import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
+
+export type GraphRenderPhase =
+  | "idle"
+  | "rendering"
+  | "settling-sandbox"
+  | "swapping"
+  | "decorating"
+  | "fitting-camera"
+  | "stable"
+  | "error";
+
+export interface GraphRenderStatus {
+  generation: number;
+  phase: GraphRenderPhase;
+  direction: "TD" | "LR";
+  path: readonly string[];
+  message?: string;
+}
 
 /** A directed graph edge, from one node id to another, with an optional label. */
 interface GraphEdge {
@@ -57,15 +76,25 @@ interface GraphFrame {
 /**
  * Camera snapshot captured before a structural Mermaid re-render.
  *
- * VALUE: Lets the canvas temporarily render Mermaid at identity scale so
- * `htmlLabels` measure in unzoomed space, then either restore the old camera or
- * replace it with a newly-fitted one after layout settles.
+ * VALUE: Lets the canvas keep the previous graph visible while Mermaid renders
+ * the next structure in an off-camera sandbox, then restore or recompute the
+ * camera only after the finished SVG is swapped into place.
  */
 interface PendingStructuralRerender {
   token: number;
   previousCameraState: GraphCameraState;
 }
 
+/**
+ * Pixel size lock applied to the visible Mermaid host during a structural swap.
+ *
+ * VALUE: Keeps the camera scene's intrinsic size stable even if the browser
+ * briefly paints between removing the old SVG and fully settling on the new one.
+ */
+interface GraphHostSize {
+  width: number;
+  height: number;
+}
 
 /**
  * Payload emitted when the user enters or leaves a subgraph.
@@ -139,6 +168,15 @@ const SUBGRAPH_BADGE_CLASS = "mr-node-subgraph-badge";
 
 /** Radius (px) of the drillable-node corner badge circle, centred on the node shape's top-right corner. */
 const SUBGRAPH_BADGE_RADIUS_PX = 7;
+
+/** CSS class for a host-supplied `NodeDecoration.badge` dot (see graph-canvas.component.scss). */
+const NODE_BADGE_CLASS = "mr-node-badge";
+
+/** CSS class toggled on a `NodeDecoration.badge` dot when `pulse: true`. */
+const NODE_BADGE_PULSE_CLASS = "mr-node-badge--pulse";
+
+/** Radius (px) of a host-supplied `NodeDecoration.badge` dot. */
+const NODE_BADGE_RADIUS_PX = 6;
 
 /**
  * Reserved pixel footprint for content injected into a node's label *after*
@@ -221,13 +259,28 @@ const NODE_DECORATION_CLASS = "mr-node-decoration";
 const FOLLOW_MAX_ZOOM = 1.4;
 
 /**
- * Camera state used while Mermaid performs a structural re-render.
+ * Default camera snapshot used when the child camera is not yet available.
  *
- * VALUE: Rendering the SVG at identity scale avoids zoom-dependent
- * `foreignObject`/`htmlLabels` measurement drift during direction switches and
- * subgraph navigation.
+ * VALUE: Structural render bookkeeping always has a camera state to restore,
+ * even during very early initialization.
  */
-const IDENTITY_CAMERA_STATE: GraphCameraState = { x: 0, y: 0, scale: 1 };
+const DEFAULT_CAMERA_STATE: GraphCameraState = { x: 0, y: 0, scale: 1 };
+
+/**
+ * Class name applied to the hidden Mermaid render sandbox.
+ *
+ * VALUE: MutationObserver callbacks can cheaply ignore sandbox-only DOM churn
+ * while the visible graph continues to react to real swaps.
+ */
+const RENDER_SANDBOX_CLASS = "graph-canvas__render-sandbox";
+
+/**
+ * Prefix for Mermaid render ids created by the main graph canvas.
+ *
+ * VALUE: Keeps generated SVG ids unique across multiple canvas instances on the
+ * same page while still being easy to correlate in the DOM.
+ */
+const MAIN_GRAPH_RENDER_ID_PREFIX = "mr-main-graph";
 
 /**
  * Number of consecutive animation frames whose SVG bounds must match before the
@@ -254,6 +307,12 @@ const STRUCTURAL_LAYOUT_MAX_WAIT_FRAMES = 24;
  * real label-size changes.
  */
 const STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX = 0.5;
+
+/** Running counter so each canvas instance gets a unique Mermaid render-id prefix. */
+let graphCanvasInstanceCounter = 0;
+
+/** Key for the Mermaid config most recently applied to Mermaid's module-global renderer. */
+let activeMermaidConfigKey: string | null = null;
 
 /**
  * Lowest valid percentage shown in a task graph node progress bar.
@@ -283,7 +342,7 @@ const TASK_GRAPH_PROGRESS_MAX_PERCENT = 100;
  * `mermaidTheme` or `mermaidConfig` to align Mermaid output with their app theme.
  */
 const DEFAULT_MERMAID_OPTIONS: MermaidRuntimeConfig = {
-  ...buildMermaidRuntimeConfig("dark", true),
+  ...buildMermaidRuntimeConfig("dark", false),
   securityLevel: "loose",
   flowchart: {
     // The camera owns sizing/zoom. `useMaxWidth: false` gives the SVG a fixed
@@ -294,6 +353,22 @@ const DEFAULT_MERMAID_OPTIONS: MermaidRuntimeConfig = {
     curve: "basis",
   },
 };
+
+/**
+ * Applies Mermaid's module-global render config when it changed.
+ *
+ * PURPOSE: Mermaid keeps its render config as module-global state; whichever
+ * caller initializes it last wins app-wide.
+ *
+ * VALUE: The main graph and its subgraph previews can render with different
+ * configs without reinitializing Mermaid on every single call.
+ */
+function ensureMermaidConfigured(config: MermaidRuntimeConfig): void {
+  const key = readMermaidRuntimeConfigKey(config);
+  if (activeMermaidConfigKey === key) return;
+  activeMermaidConfigKey = key;
+  mermaid.initialize(config);
+}
 
 /**
  * Interactive Mermaid graph canvas — the rendering + interaction core.
@@ -426,11 +501,27 @@ const GRAPH_EDGE_ID_TO_INDEX = 2;
   selector: "mr-graph-canvas",
   templateUrl: "./graph-canvas.component.html",
   styleUrl: "./graph-canvas.component.scss",
-  host: { class: "mr-graph-canvas" },
-  imports: [CommonModule, MarkdownModule, GraphCameraComponent, MinimapComponent, GraphBreadcrumbComponent],
+  host: {
+    class: "mr-graph-canvas",
+    "[attr.data-render-phase]": "renderStatus().phase",
+    "[attr.data-render-generation]": "renderStatus().generation",
+    "[attr.data-render-message]": "renderStatus().message ?? null",
+  },
+  imports: [CommonModule, GraphCameraComponent, MinimapComponent, GraphBreadcrumbComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphCanvasComponent implements AfterViewInit {
+  /** Observable structural-render lifecycle for hosts and browser regression tests. */
+  readonly renderStatus = signal<GraphRenderStatus>({
+    generation: 0,
+    phase: "idle",
+    direction: "TD",
+    path: [],
+  });
+
+  /** Emits after the newest visible graph and camera have survived a painted frame. */
+  readonly renderSettled = output<GraphRenderStatus>();
+
   readonly minimapContentRect = signal<GraphRect | null>(null);
   readonly minimapNodes = signal<MinimapNodeRect[]>([]);
   private readonly viewportSize = signal<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -453,6 +544,10 @@ export class GraphCanvasComponent implements AfterViewInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly cameraRef = viewChild.required(GraphCameraComponent);
   private readonly viewportRef = viewChild.required<ElementRef<HTMLElement>>("viewport");
+  private readonly mermaidHostRef = viewChild.required<ElementRef<HTMLElement>>("mermaidHost");
+  private readonly viewReady = signal(false);
+  private readonly instanceId = `${MAIN_GRAPH_RENDER_ID_PREFIX}-${graphCanvasInstanceCounter++}`;
+  private readonly renderSandboxHost: HTMLDivElement;
 
   protected readonly cameraState = computed(() => {
     const cameraComp = this.cameraRef();
@@ -633,7 +728,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   readonly graphPathChange = output<string[]>();
 
-  protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() => this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? true));
+  protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() => this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? false));
 
   private readonly internalSelectedNodeId = signal<string | null>(null);
 
@@ -706,7 +801,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     return map;
   });
 
-  protected readonly flowMarkdown = computed(() => `\`\`\`mermaid\n${this.buildGraph()}\n\`\`\``);
+  protected readonly mermaidSource = computed(() => this.buildGraph());
 
   protected readonly effectiveSelectedNodeId = computed(() => {
     const nodes = this.activeNodes();
@@ -795,6 +890,9 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Monotonic token for invalidating stale structural-layout settle loops. */
   private structuralLayoutToken = 0;
 
+  /** Current in-flight main-graph Mermaid render token. */
+  private mainGraphRenderToken = 0;
+
   /**
    * Track previous status of each node.
    *
@@ -814,6 +912,10 @@ export class GraphCanvasComponent implements AfterViewInit {
 
   constructor() {
     const host = this.hostElement.nativeElement;
+    this.renderSandboxHost = createMermaidRenderSandbox(
+      host,
+      `graph-canvas__mermaid mermaid ${RENDER_SANDBOX_CLASS}`,
+    );
     const clickListener = (event: MouseEvent) => this.handleChartClick(event);
     const dblClickListener = (event: MouseEvent) => this.handleChartDblClick(event);
     const contextMenuListener = (event: MouseEvent) => this.handleChartContextMenu(event);
@@ -821,6 +923,9 @@ export class GraphCanvasComponent implements AfterViewInit {
       const hasRealMutations = mutations.some((m) => {
         const element = m.target instanceof Element ? m.target : m.target.parentElement;
         if (element) {
+          if (element.closest(`.${RENDER_SANDBOX_CLASS}`)) {
+            return false;
+          }
           if (element.closest("mr-minimap, .mr-minimap")) {
             return false;
           }
@@ -851,14 +956,20 @@ export class GraphCanvasComponent implements AfterViewInit {
       chartObserver.disconnect();
       this.clearReplayAnimationFrame();
       this.clearReplayAnimationTimer();
+      this.mainGraphRenderToken++;
       this.cancelStructuralLayoutSettle();
+      this.clearRenderedGraphHostSizeLock();
+      this.renderSandboxHost.remove();
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
 
     effect(() => {
-      const structureKey = this.flowMarkdown();
-      untracked(() => this.prepareStructuralRerender(structureKey));
+      if (!this.viewReady()) return;
+      const source = this.mermaidSource();
+      const config = this.mermaidOptions();
+      const structureKey = `${readMermaidRuntimeConfigKey(config)}\u0000${source}`;
+      untracked(() => void this.renderMainGraph(structureKey, source, config));
     });
 
     effect(() => {
@@ -876,14 +987,16 @@ export class GraphCanvasComponent implements AfterViewInit {
 
     // Status colouring and the "current" highlight live as DOM classes on the
     // rendered nodes, applied whenever a status, the current focus, the style map,
-    // or the active level changes. Because this never touches the Mermaid source,
-    // the SVG is not re-rendered.
+    // the decoration map (e.g. the live "thinking" badge), or the active level
+    // changes. Because this never touches the Mermaid source, the SVG is not
+    // re-rendered.
     effect(() => {
       this.statusKey();
       this.currentNodeId();
       this.replayActive();
       this.replayEvent();
       this.effectiveStatusStyles();
+      this.decorations();
       this.graphStack();
       this.scheduleStatusClasses();
     });
@@ -938,6 +1051,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     });
     resizeObserver.observe(this.viewportRef().nativeElement);
     this.destroyRef.onDestroy(() => resizeObserver.disconnect());
+    this.viewReady.set(true);
   }
 
   private buildAliasMap(nodes: readonly MermaidRuntime.Node[]): GraphAliasMap {
@@ -957,7 +1071,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    *
    * Status colouring and the live "current" highlight are applied as DOM classes
    * on the rendered `.node` elements (see `applyStatusClasses`). Keeping them out
-   * of the source means `flowMarkdown` only changes when the structure changes,
+   * of the source means `mermaidSource` only changes when the structure changes,
    * so a run that merely advances statuses produces zero Mermaid re-renders.
    */
   private buildGraph(): string {
@@ -1127,7 +1241,8 @@ export class GraphCanvasComponent implements AfterViewInit {
     }
 
     this.applySelectedNodeClass(this.effectiveSelectedNodeId());
-    if (!this.hostElement.nativeElement.querySelector(".mermaid .node")) return;
+    if (!this.readRenderedGraphHost()?.querySelector(".node")) return;
+    this.setRenderPhase(this.mainGraphRenderToken, "decorating");
 
     // Clear hashes on structural parent re-render so all subgraph previews are redrawn
     this.subgraphStructureHashes.clear();
@@ -1139,7 +1254,9 @@ export class GraphCanvasComponent implements AfterViewInit {
 
     const pendingStructuralRerender = this.pendingStructuralRerender;
     if (pendingStructuralRerender) {
-      this.waitForStableStructuralLayout(pendingStructuralRerender);
+      this.pendingStructuralRerender = null;
+      this.finalizeStructuralRerender(pendingStructuralRerender.previousCameraState);
+      this.scheduleRenderStable();
       return;
     }
 
@@ -1154,15 +1271,62 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.hasFitInitialView = true;
       requestAnimationFrame(() => this.cameraRef().fitAll());
     }
+    this.scheduleRenderStable();
+  }
+
+  private async renderMainGraph(structureKey: string, source: string, config: MermaidRuntimeConfig): Promise<void> {
+    this.prepareStructuralRerender(structureKey);
+    const token = ++this.mainGraphRenderToken;
+    this.setRenderPhase(token, "rendering");
+
+    try {
+      ensureMermaidConfigured(config);
+      const renderId = `${this.instanceId}-${token}`;
+      ensureMermaidTemporaryRenderIsolation(this.hostElement.nativeElement.ownerDocument);
+      const { svg, bindFunctions } = await mermaid.render(renderId, source);
+      if (token !== this.mainGraphRenderToken) {
+        return;
+      }
+
+      this.renderSandboxHost.innerHTML = svg;
+      this.setRenderPhase(token, "settling-sandbox");
+      const sandboxSettled = await this.waitForStableSandboxLayout(token);
+      if (!sandboxSettled || token !== this.mainGraphRenderToken) {
+        if (token === this.mainGraphRenderToken) {
+          this.pendingStructuralRerender = null;
+          this.renderSandboxHost.replaceChildren();
+          this.clearRenderedGraphHostSizeLock();
+          this.setRenderPhase(token, "error", "Sandbox SVG layout did not settle");
+        }
+        return;
+      }
+
+      const renderedGraphHost = this.readRenderedGraphHost();
+      if (!renderedGraphHost) {
+        return;
+      }
+
+      this.setRenderPhase(token, "swapping");
+      renderedGraphHost.innerHTML = this.renderSandboxHost.innerHTML;
+      this.renderSandboxHost.replaceChildren();
+      bindFunctions?.(renderedGraphHost);
+    } catch (err) {
+      if (token === this.mainGraphRenderToken) {
+        this.pendingStructuralRerender = null;
+        this.renderSandboxHost.replaceChildren();
+        this.clearRenderedGraphHostSizeLock();
+      }
+      this.setRenderPhase(token, "error", err instanceof Error ? err.message : String(err));
+      console.error("Failed to render Mermaid graph canvas", err);
+    }
   }
 
   /**
-   * Snapshot the current camera and neutralize the scene transform before a
-   * structural Mermaid re-render lands.
+   * Snapshot the current camera before a structural Mermaid re-render starts.
    *
-   * VALUE: `htmlLabels` now measure at scale 1 instead of whatever zoom the user
-   * currently has applied, removing the node/text size drift that otherwise shows
-   * up after direction switches and subgraph navigation.
+   * VALUE: The previous graph stays visible while Mermaid renders offscreen, and
+   * once the finished SVG is swapped into view the camera can either restore the
+   * prior viewport or compute a new fit/follow target.
    */
   private prepareStructuralRerender(structureKey: string): void {
     if (this.lastStructureRenderKey === null) {
@@ -1174,63 +1338,60 @@ export class GraphCanvasComponent implements AfterViewInit {
     }
 
     this.lastStructureRenderKey = structureKey;
-    const camera = this.readCameraComponent();
-    if (!camera) {
-      return;
-    }
-
     this.cancelStructuralLayoutSettle();
+    const frozenHostSize = this.measureRenderedGraphHostSize();
     this.pendingStructuralRerender = {
       token: ++this.structuralLayoutToken,
-      previousCameraState: camera.cameraState(),
+      previousCameraState: this.readCameraComponent()?.cameraState() ?? DEFAULT_CAMERA_STATE,
     };
-    camera.setCameraState(IDENTITY_CAMERA_STATE, { animate: false });
+    this.applyRenderedGraphHostSizeLock(frozenHostSize);
   }
 
   /**
-   * Wait for Mermaid's post-render SVG bounds to stop changing before any fit or
-   * camera restore runs.
+   * Wait for the offscreen Mermaid sandbox SVG bounds to stop changing before it
+   * is swapped into the visible camera scene.
    *
-   * VALUE: Prevents the camera from measuring a transient layout while Chromium
-   * is still settling `foreignObject` label sizes.
+   * VALUE: The visible scene never shows Mermaid's transient label/bounds phases;
+   * only a settled SVG is promoted into the camera subtree.
    */
-  private waitForStableStructuralLayout(pending: PendingStructuralRerender): void {
+  private waitForStableSandboxLayout(renderToken: number): Promise<boolean> {
     this.cancelStructuralLayoutSettle();
 
-    let stableFrameCount = 0;
-    let sampledFrameCount = 0;
-    let previousBounds: DOMRect | null = null;
+    return new Promise((resolve) => {
+      let sampledFrameCount = 0;
+      const tracker = new LayoutStabilityTracker(
+        STRUCTURAL_LAYOUT_STABLE_FRAME_COUNT,
+        STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX,
+      );
 
-    const sampleLayout = (): void => {
-      if (this.pendingStructuralRerender?.token !== pending.token) {
-        this.structuralLayoutSettleFrame = null;
-        return;
-      }
-
-      sampledFrameCount++;
-      const bounds = this.measureRenderedSvgBounds();
-      if (bounds && previousBounds && this.sameSvgBounds(bounds, previousBounds)) {
-        stableFrameCount++;
-      } else if (bounds) {
-        stableFrameCount = 1;
-      } else {
-        stableFrameCount = 0;
-      }
-      previousBounds = bounds;
-
-      if (stableFrameCount >= STRUCTURAL_LAYOUT_STABLE_FRAME_COUNT || sampledFrameCount >= STRUCTURAL_LAYOUT_MAX_WAIT_FRAMES) {
-        this.structuralLayoutSettleFrame = null;
-        if (this.pendingStructuralRerender?.token === pending.token) {
-          this.pendingStructuralRerender = null;
-          this.finalizeStructuralRerender(pending.previousCameraState);
+      const sampleLayout = (): void => {
+        if (renderToken !== this.mainGraphRenderToken) {
+          this.structuralLayoutSettleFrame = null;
+          resolve(false);
+          return;
         }
-        return;
-      }
+
+        sampledFrameCount++;
+        const bounds = this.measureSvgBounds(this.renderSandboxHost);
+        const stability = tracker.sample(bounds);
+
+        if (stability === "settled") {
+          this.structuralLayoutSettleFrame = null;
+          resolve(true);
+          return;
+        }
+
+        if (sampledFrameCount >= STRUCTURAL_LAYOUT_MAX_WAIT_FRAMES) {
+          this.structuralLayoutSettleFrame = null;
+          resolve(false);
+          return;
+        }
+
+        this.structuralLayoutSettleFrame = requestAnimationFrame(sampleLayout);
+      };
 
       this.structuralLayoutSettleFrame = requestAnimationFrame(sampleLayout);
-    };
-
-    this.structuralLayoutSettleFrame = requestAnimationFrame(sampleLayout);
+    });
   }
 
   /**
@@ -1241,20 +1402,46 @@ export class GraphCanvasComponent implements AfterViewInit {
    * box from the in-flight render.
    */
   private finalizeStructuralRerender(previousCameraState: GraphCameraState): void {
+    this.setRenderPhase(this.mainGraphRenderToken, "fitting-camera");
     this.updateMinimap();
 
     if (this.followActive() && this.activeFocusId()) {
-      this.requestFrameActiveNode();
+      this.frameActiveNode({ animate: false });
+      requestAnimationFrame(() => this.clearRenderedGraphHostSizeLock());
       return;
     }
 
     if (!this.hasFitInitialView) {
       this.hasFitInitialView = true;
-      this.cameraRef().fitAll();
+      this.cameraRef().fitAll({ animate: false });
+      requestAnimationFrame(() => this.clearRenderedGraphHostSizeLock());
       return;
     }
 
     this.cameraRef().setCameraState(previousCameraState, { animate: false });
+    requestAnimationFrame(() => this.clearRenderedGraphHostSizeLock());
+  }
+
+  private setRenderPhase(generation: number, phase: GraphRenderPhase, message?: string): void {
+    if (generation !== this.mainGraphRenderToken && generation !== 0) return;
+    this.renderStatus.set({
+      generation,
+      phase,
+      direction: this.direction(),
+      path: this.graphStack().map((frame) => frame.nodeId),
+      ...(message ? { message } : {}),
+    });
+  }
+
+  private scheduleRenderStable(): void {
+    const generation = this.mainGraphRenderToken;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (generation !== this.mainGraphRenderToken) return;
+        this.setRenderPhase(generation, "stable");
+        this.renderSettled.emit(this.renderStatus());
+      });
+    });
   }
 
   /** Cancel any in-flight structural-layout settle loop. */
@@ -1275,9 +1462,9 @@ export class GraphCanvasComponent implements AfterViewInit {
     }
   }
 
-  /** Read the rendered Mermaid SVG's current on-screen bounds. */
-  private measureRenderedSvgBounds(): DOMRect | null {
-    const svg = this.hostElement.nativeElement.querySelector(".mermaid svg");
+  /** Read the current Mermaid SVG bounds inside a specific render root. */
+  private measureSvgBounds(root: ParentNode): DOMRect | null {
+    const svg = root.querySelector("svg");
     if (!(svg instanceof SVGSVGElement)) {
       return null;
     }
@@ -1289,12 +1476,76 @@ export class GraphCanvasComponent implements AfterViewInit {
     return bounds;
   }
 
-  /** True when two successive SVG bounds are equal within the configured tolerance. */
-  private sameSvgBounds(current: DOMRect, previous: DOMRect): boolean {
-    return Math.abs(current.width - previous.width) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX
-      && Math.abs(current.height - previous.height) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX
-      && Math.abs(current.x - previous.x) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX
-      && Math.abs(current.y - previous.y) <= STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX;
+  /** Safe access to the visible Mermaid mount inside the camera scene. */
+  private readRenderedGraphHost(): HTMLElement | null {
+    try {
+      return this.mermaidHostRef().nativeElement;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Measure the visible Mermaid host's current box size in CSS pixels.
+   *
+   * VALUE: Lets a structural rerender temporarily hold the camera scene at its
+   * previous intrinsic size while the new SVG is swapped in.
+   */
+  private measureRenderedGraphHostSize(): GraphHostSize | null {
+    const host = this.readRenderedGraphHost();
+    if (!host) {
+      return null;
+    }
+
+    const bounds = host.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0) {
+      return null;
+    }
+
+    return {
+      width: bounds.width,
+      height: bounds.height,
+    };
+  }
+
+  /**
+   * Lock the visible Mermaid host to a fixed size for the structural swap window.
+   *
+   * VALUE: Prevents the camera scene's intrinsic size from collapsing or
+   * expanding for a frame before the final camera state has been restored.
+   */
+  private applyRenderedGraphHostSizeLock(size: GraphHostSize | null): void {
+    const host = this.readRenderedGraphHost();
+    if (!host || !size) {
+      return;
+    }
+
+    host.style.width = `${size.width}px`;
+    host.style.height = `${size.height}px`;
+    host.style.minWidth = `${size.width}px`;
+    host.style.minHeight = `${size.height}px`;
+    host.style.maxWidth = `${size.width}px`;
+    host.style.maxHeight = `${size.height}px`;
+  }
+
+  /**
+   * Release any temporary structural-swap size lock on the visible Mermaid host.
+   *
+   * VALUE: Once the corrected camera state has painted, the new graph regains
+   * its natural intrinsic size for future fits and follow measurements.
+   */
+  private clearRenderedGraphHostSizeLock(): void {
+    const host = this.readRenderedGraphHost();
+    if (!host) {
+      return;
+    }
+
+    host.style.removeProperty("width");
+    host.style.removeProperty("height");
+    host.style.removeProperty("min-width");
+    host.style.removeProperty("min-height");
+    host.style.removeProperty("max-width");
+    host.style.removeProperty("max-height");
   }
 
   private updateMinimap(): void {
@@ -1394,7 +1645,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    * previous/upcoming nodes stay visible). Measures the live render: the layout
    * is stable, so even a node from the outgoing SVG yields the right position.
    */
-  private frameActiveNode(): void {
+  private frameActiveNode(options?: { animate?: boolean }): void {
     if (!this.followActive()) return;
     const focusId = this.activeFocusId();
     if (!focusId) return;
@@ -1408,7 +1659,10 @@ export class GraphCanvasComponent implements AfterViewInit {
       if (element) elements.push(element);
     }
     if (elements.length === 0) return;
-    this.cameraRef().frameElements(elements, { maxScale: FOLLOW_MAX_ZOOM });
+    this.cameraRef().frameElements(elements, {
+      maxScale: FOLLOW_MAX_ZOOM,
+      animate: options?.animate,
+    });
   }
 
   /** The node the camera should follow: the live focus, else a running node. */
@@ -1438,8 +1692,9 @@ export class GraphCanvasComponent implements AfterViewInit {
 
   /** Resolve a real node id to its rendered `.node` element, via the click anchor. */
   private findNodeElement(nodeId: string): Element | null {
-    const host = this.hostElement.nativeElement;
-    const link = (Array.from(host.querySelectorAll(".mermaid a")) as Element[]).find((linkElement) => this.readNodeIdFromLink(linkElement) === nodeId);
+    const host = this.readRenderedGraphHost();
+    if (!host) return null;
+    const link = (Array.from(host.querySelectorAll("a")) as Element[]).find((linkElement) => this.readNodeIdFromLink(linkElement) === nodeId);
     if (!link) return null;
     // This Mermaid build wraps the node group inside the click `<a>`, so `.node`
     // is a descendant; fall back to an ancestor for other builds.
@@ -1574,6 +1829,18 @@ export class GraphCanvasComponent implements AfterViewInit {
     return { x: Math.max(...xs), y: Math.min(...ys) };
   }
 
+  /** Reads `shapeEl`'s own (un-offset) bounding-box top-left corner, in the same local coordinate space {@link readOffsetGeometry} uses. */
+  private readShapeTopLeftCorner(shapeEl: SVGGraphicsElement): ShapePoint | null {
+    const geometry = this.readOffsetGeometry(shapeEl, 0);
+    if (!geometry) return null;
+    if (geometry.kind === "rect") {
+      return { x: geometry.x, y: geometry.y };
+    }
+    const xs = geometry.points.map((point) => point.x);
+    const ys = geometry.points.map((point) => point.y);
+    return { x: Math.min(...xs), y: Math.min(...ys) };
+  }
+
   /**
    * Creates or updates a `cssClass`-marked `<rect>`/`<polygon>` sibling inside
    * `nodeElement`, tracing the node's own shape offset outward by `offsetPx`.
@@ -1673,6 +1940,47 @@ export class GraphCanvasComponent implements AfterViewInit {
     horizontal.setAttribute("y1", String(corner.y));
     horizontal.setAttribute("x2", String(corner.x + armLength));
     horizontal.setAttribute("y2", String(corner.y));
+  }
+
+  /**
+   * Creates, updates, or removes a host-supplied `NodeDecoration.badge`: a
+   * small circle centred on one of the node shape's own corners.
+   *
+   * VALUE: The library only knows how to draw and position the dot — what it
+   * means (a live LLM call, a stale cache, a pending review, ...) is entirely
+   * up to the host via `badge.color`/`badge.pulse`, so this stays reusable
+   * instead of growing a new boolean+method pair per host use case.
+   */
+  private applyNodeBadge(nodeElement: Element, badge: MermaidRuntime.NodeBadge | undefined): void {
+    const existing = nodeElement.querySelector<SVGCircleElement>(`:scope > .${NODE_BADGE_CLASS}`);
+    const shapeEl = badge ? this.findNodeShapeElement(nodeElement) : null;
+    const corner = shapeEl
+      ? badge!.position === "topLeft"
+        ? this.readShapeTopLeftCorner(shapeEl)
+        : this.readShapeTopRightCorner(shapeEl)
+      : null;
+    if (!badge || !corner) {
+      existing?.remove();
+      return;
+    }
+
+    let circle = existing;
+    if (!circle) {
+      circle = document.createElementNS(SVG_NAMESPACE, "circle") as SVGCircleElement;
+      circle.classList.add(NODE_BADGE_CLASS, NODE_DECORATION_CLASS);
+      circle.setAttribute("pointer-events", "none");
+      circle.setAttribute("r", String(NODE_BADGE_RADIUS_PX));
+      nodeElement.appendChild(circle);
+    }
+    circle.classList.toggle(NODE_BADGE_PULSE_CLASS, !!badge.pulse);
+    circle.style.fill = badge.color ?? "";
+
+    const transform = shapeEl!.getAttribute("transform");
+    if (transform) circle.setAttribute("transform", transform);
+    else circle.removeAttribute("transform");
+
+    circle.setAttribute("cx", String(corner.x));
+    circle.setAttribute("cy", String(corner.y));
   }
 
   /**
@@ -1833,6 +2141,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       const hasSubgraph = !!this.resolveSubgraph(node);
       if (hasSubgraph) element.classList.add(HAS_SUBGRAPH_CLASS);
       this.applySubgraphBadge(element, hasSubgraph);
+      this.applyNodeBadge(element, this.decorations()[node.id]?.badge);
 
       // Detect transitions and trigger the generic pulse animations
       const prevStatus = this.previousStatuses.get(node.id);
@@ -1899,14 +2208,15 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   private applyEdgeStatusClasses(): void {
     const { toAlias } = this.aliasMap();
-    const host = this.hostElement.nativeElement;
+    const host = this.readRenderedGraphHost();
+    if (!host) return;
     const styles = this.effectiveStatusStyles();
     const nodes = this.activeNodes();
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
     const suppressRunningEdgeAnimation = this.replayActive();
 
     // Clean up any old edge status classes first from the flowchart link paths
-    for (const edgeEl of host.querySelectorAll(".mermaid .flowchart-link")) {
+    for (const edgeEl of Array.from(host.querySelectorAll(".flowchart-link"))) {
       const toRemove: string[] = [];
       for (let i = 0; i < edgeEl.classList.length; i++) {
         const cls = edgeEl.classList[i];
@@ -1996,8 +2306,9 @@ export class GraphCanvasComponent implements AfterViewInit {
    * Mermaid's auto-generated unique ID suffixes.
    */
   private findEdgeElement(parentAlias: string, childAlias: string): Element | null {
-    const host = this.hostElement.nativeElement;
-    return host.querySelector(`.mermaid [data-id^="L_${parentAlias}_${childAlias}_"]`) ?? host.querySelector(`.mermaid [id*="-L_${parentAlias}_${childAlias}_"]`) ?? null;
+    const host = this.readRenderedGraphHost();
+    if (!host) return null;
+    return host.querySelector(`[data-id^="L_${parentAlias}_${childAlias}_"]`) ?? host.querySelector(`[id*="-L_${parentAlias}_${childAlias}_"]`) ?? null;
   }
 
   /**
@@ -2034,11 +2345,12 @@ export class GraphCanvasComponent implements AfterViewInit {
    * that freezes the tab.
    */
   private applySelectedNodeClass(selectedId: string | null): void {
-    const host = this.hostElement.nativeElement;
-    const selectedLink = selectedId ? (Array.from(host.querySelectorAll(".mermaid a")) as Element[]).find((linkElement) => this.readNodeIdFromLink(linkElement) === selectedId) : undefined;
+    const host = this.readRenderedGraphHost();
+    if (!host) return;
+    const selectedLink = selectedId ? (Array.from(host.querySelectorAll("a")) as Element[]).find((linkElement) => this.readNodeIdFromLink(linkElement) === selectedId) : undefined;
     const selectedNode = selectedLink?.querySelector(".node") ?? selectedLink?.closest(".node") ?? null;
 
-    for (const nodeElement of host.querySelectorAll(".mermaid .node.selected")) {
+    for (const nodeElement of Array.from(host.querySelectorAll(".node.selected"))) {
       if (nodeElement === selectedNode) continue;
       nodeElement.classList.remove("selected");
       this.removeShapeOutlineOverlay(nodeElement, SELECTED_OUTLINE_CLASS);
@@ -2116,7 +2428,7 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Strip every injected subgraph thumbnail (toggle off). */
   private removeSubgraphPreviews(): void {
     this.subgraphStructureHashes.clear();
-    for (const preview of this.hostElement.nativeElement.querySelectorAll(".task-graph-node-subgraph-preview")) {
+    for (const preview of Array.from(this.readRenderedGraphHost()?.querySelectorAll(".task-graph-node-subgraph-preview") ?? [])) {
       preview.remove();
     }
   }
@@ -2140,7 +2452,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     const source = lines.join("\n");
 
     const renderId = `mr-sg-preview-${nodeId.replace(/[^a-zA-Z0-9-]/g, "")}-${Math.random().toString(36).substring(2, 9)}`;
-    const config = {
+    const config: MermaidRuntimeConfig = {
       ...this.mermaidOptions(),
       flowchart: {
         ...this.mermaidOptions().flowchart,
@@ -2152,6 +2464,8 @@ export class GraphCanvasComponent implements AfterViewInit {
       },
     };
 
+    ensureMermaidConfigured(config);
+    ensureMermaidTemporaryRenderIsolation(this.hostElement.nativeElement.ownerDocument);
     mermaid
       .render(renderId, source)
       .then((result: { svg: string }) => {
@@ -2295,8 +2609,9 @@ export class GraphCanvasComponent implements AfterViewInit {
    * current-event trace above them.
    */
   private clearEdgePulseClasses(): void {
-    const host = this.hostElement.nativeElement;
-    for (const edgeEl of host.querySelectorAll(".mermaid .flowchart-link")) {
+    const host = this.readRenderedGraphHost();
+    if (!host) return;
+    for (const edgeEl of Array.from(host.querySelectorAll(".flowchart-link"))) {
       const toRemove: string[] = [];
       for (let i = 0; i < edgeEl.classList.length; i++) {
         const cls = edgeEl.classList[i];
@@ -2465,7 +2780,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    * original Mermaid edge elements.
    */
   private getReplayOverlayGroup(): SVGGElement | null {
-    const svgElement = this.hostElement.nativeElement.querySelector(".mermaid svg");
+    const svgElement = this.readRenderedGraphHost()?.querySelector("svg");
     if (!(svgElement instanceof SVGSVGElement)) return null;
 
     const existing = svgElement.querySelector(`.${REPLAY_ANIMATION_OVERLAY_CLASS}`);
@@ -2489,7 +2804,7 @@ export class GraphCanvasComponent implements AfterViewInit {
   private clearReplayEventVisuals(): void {
     this.clearReplayAnimationTimer();
     this.clearReplayAnimationOverlay();
-    for (const nodeElement of this.hostElement.nativeElement.querySelectorAll(`.mermaid .node.${REPLAY_NODE_FLASH_CLASS}`)) {
+    for (const nodeElement of Array.from(this.readRenderedGraphHost()?.querySelectorAll(`.node.${REPLAY_NODE_FLASH_CLASS}`) ?? [])) {
       nodeElement.classList.remove(REPLAY_NODE_FLASH_CLASS);
     }
   }
@@ -2502,7 +2817,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    * VALUE: Replay can stop or advance without leaving extra SVG elements behind.
    */
   private clearReplayAnimationOverlay(): void {
-    this.hostElement.nativeElement.querySelector(`.mermaid .${REPLAY_ANIMATION_OVERLAY_CLASS}`)?.remove();
+    this.readRenderedGraphHost()?.querySelector(`.${REPLAY_ANIMATION_OVERLAY_CLASS}`)?.remove();
   }
 
   /**

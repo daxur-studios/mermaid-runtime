@@ -1,0 +1,11 @@
+<header class="demo-header">
+  <a class="brand" routerLink="/fullscreen">Mermaid Runtime <span>demo</span></a>
+  <nav aria-label="Demo scenarios">
+    @for (item of navItems; track item.path) {
+      <a [routerLink]="item.path" routerLinkActive="active">{{ item.label }}</a>
+    }
+  </nav>
+</header>
+<main class="demo-main">
+  <router-outlet />
+</main>

@@ -15,6 +15,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import mermaid from 'mermaid';
 
 import { MermaidRuntime } from '../task-graph-model';
+import { ensureMermaidTemporaryRenderIsolation } from '../mermaid-render-sandbox';
 import {
   buildMermaidRuntimeConfig,
   readMermaidRuntimeConfigKey,
@@ -143,6 +144,7 @@ export class GraphPreviewSimpleComponent {
     ensureMermaidConfigured(config);
     const source = this.buildMermaidSource(graph, aliasByNodeId, direction);
     const renderId = `${this.instanceId}-${token}`;
+    ensureMermaidTemporaryRenderIsolation(this.hostElement.nativeElement.ownerDocument);
     const { svg, bindFunctions } = await mermaid.render(renderId, source);
     if (token !== this.renderToken) return;
 

@@ -122,6 +122,12 @@ export class GraphCameraComponent {
    */
   readonly controlsPlacement = input<'built-in' | 'host'>('built-in');
 
+  /** Current graph layout direction, shown by the built-in orientation control. */
+  readonly direction = input<'TD' | 'LR'>('TD');
+
+  /** Requests a graph re-layout when the built-in orientation control is used. */
+  readonly directionChange = output<'TD' | 'LR'>();
+
   private readonly viewportRef = viewChild.required<ElementRef<HTMLElement>>('viewport');
   private readonly sceneRef = viewChild.required<ElementRef<HTMLElement>>('scene');
 
@@ -133,6 +139,11 @@ export class GraphCameraComponent {
    * follow-execution and reveal a re-center control.
    */
   readonly userInteract = output<void>();
+
+  /** Toggle between top-to-bottom and left-to-right graph layouts. */
+  protected toggleDirection(): void {
+    this.directionChange.emit(this.direction() === 'TD' ? 'LR' : 'TD');
+  }
 
   private readonly camera = signal<GraphCameraState>({ x: 0, y: 0, scale: 1 });
   readonly cameraState = this.camera.asReadonly();
@@ -252,9 +263,9 @@ export class GraphCameraComponent {
   }
 
   /** Frame the whole projected content so all of it is visible. */
-  fitAll(): void {
+  fitAll(options?: { animate?: boolean }): void {
     const naturalRect = this.measureContentRect();
-    if (naturalRect) this.frameRect(naturalRect);
+    if (naturalRect) this.frameRect(naturalRect, options);
   }
 
   /**

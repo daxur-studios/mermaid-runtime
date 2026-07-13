@@ -304,6 +304,34 @@ npm run build  # runs: ng build mermaid-runtime
 
 Output lands in `dist/mermaid-runtime/`.
 
+## Testing rendering and layout
+
+The workspace uses two complementary suites:
+
+- `npm run test:unit` runs the Angular/Karma component and render-stability tests.
+- `npm run test:e2e` starts the demo app and runs Playwright against the deterministic
+  `/testing/layout-regression` route.
+- `npm run test:regression` runs both suites.
+
+Install Playwright's Chromium build once after `npm install`:
+
+```bash
+npx playwright install chromium
+```
+
+The browser suite samples every animation frame during direction changes and
+subgraph navigation. It fails on transient document/host scroll changes, host or
+viewport movement, missing/duplicate visible SVGs, stale rapid renders, and a
+render generation that never reaches `stable`. Failed CI runs retain the
+Playwright report, screenshots, video, trace, and sampled DOM diagnostics.
+
+For interactive debugging:
+
+```bash
+npm run test:e2e:ui
+npm run test:e2e:debug
+```
+
 ## Local development (build → pack → deploy)
 
 Consumers install this library from a packed tgz (`file:./daxur-studios-mermaid-runtime-<version>.tgz`

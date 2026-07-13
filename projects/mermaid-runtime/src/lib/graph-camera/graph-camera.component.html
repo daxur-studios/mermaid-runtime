@@ -1,28 +1,23 @@
-<div
-  #viewport
-  class="graph-camera__viewport"
-  [class.graph-camera__viewport--panning]="isPanning()"
-  (wheel)="onWheel($event)"
-  (pointerdown)="onPointerDown($event)"
-  (pointermove)="onPointerMove($event)"
-  (pointerup)="onPointerUp($event)"
-  (pointercancel)="onPointerUp($event)"
->
-  <div
-    #scene
-    class="graph-camera__scene"
-    [class.graph-camera__scene--interacting]="isInteracting()"
-    [style.transform]="sceneTransform()"
-  >
+<div #viewport class="graph-camera__viewport" [class.graph-camera__viewport--panning]="isPanning()" (wheel)="onWheel($event)" (pointerdown)="onPointerDown($event)" (pointermove)="onPointerMove($event)" (pointerup)="onPointerUp($event)" (pointercancel)="onPointerUp($event)">
+  <div #scene class="graph-camera__scene" [class.graph-camera__scene--interacting]="isInteracting()" [style.transform]="sceneTransform()">
     <ng-content />
   </div>
 </div>
 
-@if (controlsPlacement() === 'built-in') {
+@if (controlsPlacement() === "built-in") {
   <div class="graph-camera__controls">
     <button type="button" class="graph-camera__btn" title="Zoom in" (click)="zoomIn()">+</button>
     <button type="button" class="graph-camera__btn" title="Zoom out" (click)="zoomOut()">&minus;</button>
     <button type="button" class="graph-camera__btn" title="Fit all" (click)="fitAll()">Fit</button>
     <button type="button" class="graph-camera__btn" title="Reset view" (click)="reset()">Reset</button>
+    <button
+      type="button"
+      class="graph-camera__btn graph-camera__btn--direction"
+      [title]="direction() === 'TD' ? 'Switch to left-to-right layout' : 'Switch to top-to-bottom layout'"
+      [attr.aria-label]="direction() === 'TD' ? 'Switch to left-to-right layout' : 'Switch to top-to-bottom layout'"
+      (click)="toggleDirection()"
+    >
+      {{ direction() === 'TD' ? 'LR' : 'TB' }}
+    </button>
   </div>
 }

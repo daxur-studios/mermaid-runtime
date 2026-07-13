@@ -1,10 +1,6 @@
----
-name: use-mermaid-runtime
-description: Guide for adding or updating @daxur-studios/mermaid-runtime usage in an Angular project. Use when wiring TaskGraphComponent, GraphCanvasComponent, or the ref-loader seam, or when debugging the interactive graph viewer.
-metadata:
-  type: reference
----
-
+name = "use-mermaid-runtime"
+description = "Guide for adding or updating @daxur-studios/mermaid-runtime usage in an Angular project. Use when wiring TaskGraphComponent, GraphCanvasComponent, or the ref-loader seam, or when debugging the interactive graph viewer."
+developer_instructions = """
 # Using @daxur-studios/mermaid-runtime
 
 ## Import surface
@@ -318,4 +314,4 @@ labelled box, just without the extra compaction.
 - **`subgraph` vs `subgraphResolver`**: use inline `subgraph` for self-contained nested data; use `subgraphResolver` when the host resolves graphs lazily (e.g. by `subgraphId`).
 - **`groups` vs `Node.subgraph`**: a group (`NodeGroup`) is a visual cluster that stays in the same view; `Node.subgraph`/`subgraphId` is drill-down that swaps in a different view. They're unrelated despite Mermaid using the keyword `subgraph` for clustering under the hood.
 - **`runId`**: pass it to `<mr-task-graph>` (or the inspector) so the ref loader can build its HTTP route. Without it, ref previews fail with "No task run id".
-- **Status updates do not re-render Mermaid** — the canvas applies status colours as DOM classes on the existing SVG. Only structural changes (new nodes, new edges) trigger a Mermaid re-render.
+- **Status updates do not re-render Mermaid** — the canvas applies status colours as DOM classes on the existing SVG. Only structural changes (new nodes, new edges) trigger a Mermaid re-render."""

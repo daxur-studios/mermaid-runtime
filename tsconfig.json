@@ -17,6 +17,15 @@
     "target": "ES2022",
     "module": "ES2022",
     "useDefineForClassFields": false,
-    "lib": ["ES2022", "dom"]
-  }
+    "lib": ["ES2022", "dom"],
+    "baseUrl": ".",
+    "paths": {
+      "@daxur-studios/mermaid-runtime": ["projects/mermaid-runtime/src/public-api.ts"]
+    }
+  },
+  "references": [
+    {
+      "path": "./projects/demo/tsconfig.app.json"
+    }
+  ]
 }

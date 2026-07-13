@@ -126,6 +126,19 @@
   padding: 0.75rem;
 }
 
+// Mermaid needs real browser layout while it measures labels and SVG bounds,
+// but its temporary render tree must never participate in the visible page's
+// flow. Opacity preserves the exact layout/measurement path, while fixed
+// positioning prevents transient document scroll extents.
+:host > .graph-canvas__render-sandbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+}
+
 // Breadcrumb overlay positioning; chip styling lives in GraphBreadcrumbComponent.
 .graph-canvas__breadcrumb {
   position: absolute;

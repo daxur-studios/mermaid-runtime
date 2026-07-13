@@ -107,6 +107,36 @@ export namespace MermaidRuntime {
      * rather than doing its own work.
      */
     shape?: 'rect' | 'diamond' | 'subroutine';
+    /**
+     * A small corner dot the host can use for any per-node live cue (e.g. "this
+     * node has an LLM call in flight") without the library knowing what the cue
+     * means — see `GraphCanvasComponent.applyNodeBadge`.
+     */
+    badge?: NodeBadge;
+  }
+
+  /**
+   * A small corner dot painted on a node's own shape, independent of `status`.
+   *
+   * PURPOSE: `status` is coarse (running/complete/failed/...) and shared across
+   * every node in the graph via `StatusStyleMap`; a badge is a host-defined,
+   * per-node overlay for anything finer-grained the host wants to signal —
+   * the library only knows how to draw a dot, not what it represents.
+   *
+   * VALUE: One generic primitive instead of a growing list of single-purpose
+   * boolean flags on `NodeDecoration` (`thinking`, `stale`, `blocked`, ...).
+   */
+  export interface NodeBadge {
+    /**
+     * Corner to anchor on. The built-in subgraph badge already owns `'topRight'`
+     * (see `GraphCanvasComponent.applySubgraphBadge`); prefer `'topLeft'` to
+     * avoid the two overlapping on a node that has both.
+     */
+    position: 'topLeft' | 'topRight';
+    /** Any valid CSS `fill` value. Defaults to `--app-color-active` when omitted. */
+    color?: string;
+    /** Animates opacity/scale in a loop instead of rendering as a static dot. */
+    pulse?: boolean;
   }
 
   /** Reference to structured input/output/context data stored outside the node. */

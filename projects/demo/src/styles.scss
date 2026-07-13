@@ -1,0 +1,19 @@
+@use '@angular/material' as mat;
+
+html { @include mat.theme((color: (primary: mat.$violet-palette, theme-type: dark), typography: Roboto, density: 0)); }
+:root {
+  --line: #29324d;
+  --app-color-pass: #34d399; --app-color-pass-bg: #123b35;
+  --app-color-fail: #fb7185; --app-color-fail-bg: #461f2a;
+  --app-color-warn: #fbbf24; --app-color-warn-bg: #443617;
+  --app-color-active: #818cf8; --app-color-active-bg: #292e61;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: #0b1020; color: #e2e8f0; font-family: Inter, Roboto, system-ui, sans-serif; }
+button, select { font: inherit; }
+.scenario-page { height: 100%; min-height: 0; }
+.page-copy { padding: 1.25rem 1.5rem .8rem; }
+.page-copy h1 { margin: 0 0 .3rem; font-size: 1.35rem; }
+.page-copy p { margin: 0; color: #94a3b8; font-size: .9rem; }
