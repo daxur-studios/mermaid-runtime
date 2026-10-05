@@ -291,6 +291,26 @@ export namespace MermaidRuntime {
   }
 
   /**
+   * How the viewer arranges *independent* groups — groups with no edges to
+   * nodes outside themselves (e.g. parallel trips, one-subflow-per-item runs).
+   *
+   * PURPOSE: Mermaid's default lays independent groups out in one long strip
+   * (and flips each group's inner direction). This setting packs them so the
+   * graph uses the viewport in two dimensions.
+   *
+   * - `'auto'` (default): each group's nodes flow in the graph's direction,
+   *   groups line up across it, and wrap into lines sized so the whole graph
+   *   fits the viewport at the largest zoom. Re-evaluated only when the
+   *   viewport's aspect ratio changes substantially.
+   * - `{ groupsPerLine: n }`: same, but always `n` groups per line.
+   * - `'mermaid'`: legacy behaviour — Mermaid's own placement, no wrapping.
+   *
+   * VALUE: Groups wired into the rest of the graph are never touched, and a
+   * group's own `direction` always wins, so hosts can still pin a specific look.
+   */
+  export type GroupArrangement = 'auto' | 'mermaid' | { groupsPerLine: number };
+
+  /**
    * A self-contained graph: the top-level viewer input and the shape of any
    * nested subgraph.
    *

@@ -80,6 +80,9 @@ export class TaskGraphComponent {
   /** Optional node groups for the root graph (see {@link MermaidRuntime.NodeGroup}). */
   readonly groups = input<MermaidRuntime.NodeGroup[] | null>(null);
 
+  /** How independent groups are packed (see {@link MermaidRuntime.GroupArrangement}). */
+  readonly groupArrangement = input<MermaidRuntime.GroupArrangement>('auto');
+
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
 

@@ -166,6 +166,24 @@ into a compact stack of short rows. Omit `direction` to inherit the outer flow.
 `groups` works on `<mr-graph-canvas>` too, and on any nested `subgraph`'s own
 `Graph.groups` for drill-down levels.
 
+#### Packing independent groups
+
+Groups with **no edges to nodes outside themselves** (parallel trips, one
+subflow per item, …) are packed automatically: each group's nodes flow in the
+graph's direction, groups line up *across* it, and they wrap into lines sized
+so the whole graph fits the viewport at the largest zoom. In `TD`, trips become
+side-by-side columns; in `LR`, stacked rows.
+
+```html
+<mr-task-graph [groups]="groups" groupArrangement="auto" />            <!-- default -->
+<mr-task-graph [groups]="groups" [groupArrangement]="{ groupsPerLine: 3 }" />
+<mr-task-graph [groups]="groups" groupArrangement="mermaid" />         <!-- legacy: Mermaid's own placement -->
+```
+
+`auto` re-evaluates only when the viewport's aspect ratio changes by more than
+30%, so ordinary resizes never re-layout the graph. Groups connected to the rest
+of the graph are left as-is, and a group's own `direction` always wins.
+
 > **Caveat:** only set `direction` on a group whose members have no edges
 > to/from nodes outside the group. Mermaid/dagre's routing for edges crossing
 > a cluster boundary is unreliable once that cluster's direction differs from

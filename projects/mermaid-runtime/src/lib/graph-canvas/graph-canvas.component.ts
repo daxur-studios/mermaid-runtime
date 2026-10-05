@@ -11,6 +11,7 @@ import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, type MermaidRun
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
 import { LayoutStabilityTracker } from "./layout-stability";
+import { buildGroupWrapLinks, chooseGroupsPerLine, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
 import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
 
 export type GraphRenderPhase =
@@ -578,6 +579,14 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Optional node groups for the root graph (see {@link MermaidRuntime.NodeGroup}). */
   readonly groups = input<MermaidRuntime.NodeGroup[] | null>(null);
 
+  /**
+   * How independent groups are packed (see {@link MermaidRuntime.GroupArrangement}).
+   *
+   * VALUE: `'auto'` fits parallel groups into a viewport-shaped grid instead of
+   * one long strip; `'mermaid'` restores the legacy placement.
+   */
+  readonly groupArrangement = input<MermaidRuntime.GroupArrangement>("auto");
+
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
 
@@ -800,6 +809,53 @@ export class GraphCanvasComponent implements AfterViewInit {
     return map;
   });
 
+  /**
+   * Viewport size the automatic group arrangement was last chosen for.
+   *
+   * VALUE: Only follows {@link viewportSize} when its aspect ratio changes
+   * substantially (see `viewportAspectChanged`), so ordinary resizes never
+   * trigger a Mermaid re-layout.
+   */
+  private readonly arrangementViewport = signal<ArrangementViewport | null>(null);
+
+  /**
+   * Measured cluster sizes of previously rendered independent groups, keyed by
+   * {@link groupFootprintKey}.
+   *
+   * VALUE: The first render wraps from an estimate; real sizes then refine the
+   * choice. A group's own box doesn't depend on how groups are wrapped, so one
+   * measurement per group settles it — no re-render loop.
+   */
+  private readonly groupFootprints = signal<ReadonlyMap<string, GroupFootprint>>(new Map());
+
+  /**
+   * Active-level groups free to be arranged: no edges leaving them, and at
+   * least one rendered member (empty groups emit no Mermaid cluster).
+   */
+  private readonly arrangeableGroups = computed<MermaidRuntime.NodeGroup[]>(() => {
+    const groups = this.activeGroups() ?? [];
+    const independentIds = findIndependentGroupIds(groups, this.resolveEdges());
+    const { toAlias } = this.aliasMap();
+    return groups.filter((group) => independentIds.has(group.id) && group.nodeIds.some((nodeId) => toAlias.has(nodeId)));
+  });
+
+  /**
+   * Groups placed per line for the active level, or null when groups are left
+   * to Mermaid (legacy mode, or fewer than two arrangeable groups).
+   */
+  private readonly groupsPerLine = computed<number | null>(() => {
+    const arrangement = this.groupArrangement();
+    if (arrangement === "mermaid") return null;
+    const independent = this.arrangeableGroups();
+    if (independent.length < 2) return null;
+    if (arrangement !== "auto") return Math.max(1, Math.floor(arrangement.groupsPerLine));
+
+    const flow = this.direction();
+    const measured = this.groupFootprints();
+    const footprints = independent.map((group) => measured.get(this.groupFootprintKey(group, flow)) ?? estimateGroupFootprint(group.nodeIds.length, flow));
+    return chooseGroupsPerLine(footprints, flow, this.arrangementViewport() ?? { width: 0, height: 0 });
+  });
+
   protected readonly mermaidSource = computed(() => this.buildGraph());
 
   protected readonly effectiveSelectedNodeId = computed(() => {
@@ -971,11 +1027,21 @@ export class GraphCanvasComponent implements AfterViewInit {
       untracked(() => void this.renderMainGraph(structureKey, source, config));
     });
 
+    // A new direction or group wrap rearranges the whole layout, so the previous
+    // camera framing is meaningless — fit the new arrangement once it renders.
     effect(() => {
       this.direction();
+      this.groupsPerLine();
       untracked(() => {
         this.hasFitInitialView = false;
       });
+    });
+
+    effect(() => {
+      const size = this.viewportSize();
+      if (viewportAspectChanged(untracked(this.arrangementViewport), size)) {
+        this.arrangementViewport.set(size);
+      }
     });
 
     // Keep the navigation stack in sync with the host-controlled `path` input so
@@ -1048,8 +1114,14 @@ export class GraphCanvasComponent implements AfterViewInit {
         });
       }
     });
-    resizeObserver.observe(this.viewportRef().nativeElement);
+    const viewport = this.viewportRef().nativeElement;
+    resizeObserver.observe(viewport);
     this.destroyRef.onDestroy(() => resizeObserver.disconnect());
+    // Seed the size synchronously so the first render already knows the
+    // viewport (the observer's first callback arrives a frame later, which would
+    // otherwise force an immediate second render for viewport-aware layouts).
+    const { width, height } = viewport.getBoundingClientRect();
+    this.viewportSize.set({ width, height });
     this.viewReady.set(true);
   }
 
@@ -1084,6 +1156,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       ...this.buildNodeDefinitionBlocks(nodes, toAlias, decorations),
       "",
       ...this.buildEdgeLines(aliasFor),
+      ...this.buildGroupArrangementLines(),
       "",
       ...nodes.map((node) => this.buildNodeClickLine(node, toAlias.get(node.id) ?? node.id)),
       "",
@@ -1119,13 +1192,18 @@ export class GraphCanvasComponent implements AfterViewInit {
 
     const groupAliasFor = this.groupAliasMap();
     const groupBlocks: string[] = [];
-    for (const group of groups) {
+    // Mermaid places sibling clusters in reverse source order, so arranged groups
+    // are emitted reversed to read first → last (left → right / top → bottom).
+    const arranged = this.groupsPerLine() === null ? [] : this.arrangeableGroups();
+    const orderedGroups = [...[...arranged].reverse(), ...groups.filter((group) => !arranged.includes(group))];
+    for (const group of orderedGroups) {
       const memberLines = nodes.filter((node) => nodeGroupId.get(node.id) === group.id).map((node) => this.buildNodeDefinitionLine(node, toAlias.get(node.id) ?? node.id, decorations[node.id]));
       if (memberLines.length === 0) continue;
 
       const groupAlias = groupAliasFor.get(group.id) ?? group.id;
       groupBlocks.push(`  subgraph ${groupAlias}["${this.escapeMermaidString(group.label)}"]`);
-      if (group.direction) groupBlocks.push(`    direction ${group.direction}`);
+      const direction = group.direction ?? this.readArrangedGroupDirection(group.id);
+      if (direction) groupBlocks.push(`    direction ${direction}`);
       groupBlocks.push(...memberLines);
       groupBlocks.push("  end");
     }
@@ -1133,6 +1211,62 @@ export class GraphCanvasComponent implements AfterViewInit {
     const ungroupedLines = nodes.filter((node) => !nodeGroupId.has(node.id)).map((node) => this.buildNodeDefinitionLine(node, toAlias.get(node.id) ?? node.id, decorations[node.id]));
 
     return [...groupBlocks, ...ungroupedLines];
+  }
+
+  /**
+   * Inner direction for an independent group that the host left unset.
+   *
+   * VALUE: Without it Mermaid flips an unconnected cluster perpendicular to the
+   * graph, which is what turns parallel groups into one long strip. Matching the
+   * graph's own direction makes groups line up *across* the flow instead.
+   */
+  private readArrangedGroupDirection(groupId: string): "TB" | "LR" | null {
+    if (this.groupsPerLine() === null || !this.arrangeableGroups().some((group) => group.id === groupId)) return null;
+    return this.direction() === "TD" ? "TB" : "LR";
+  }
+
+  /**
+   * Invisible group-to-group links that wrap independent groups into lines.
+   *
+   * VALUE: Mermaid then lays out the grid itself; see `buildGroupWrapLinks`.
+   */
+  private buildGroupArrangementLines(): string[] {
+    const perLine = this.groupsPerLine();
+    if (perLine === null) return [];
+    const aliasFor = this.groupAliasMap();
+    const aliases = this.arrangeableGroups().map((group) => aliasFor.get(group.id) ?? group.id);
+    return buildGroupWrapLinks(aliases, perLine);
+  }
+
+  /** Cache key for a group's measured footprint: depends on flow and membership. */
+  private groupFootprintKey(group: MermaidRuntime.NodeGroup, flow: "TD" | "LR"): string {
+    return `${flow}\u0000${group.id}\u0000${group.nodeIds.join(",")}`;
+  }
+
+  /**
+   * Records the rendered size of each arranged group not yet measured.
+   *
+   * VALUE: Replaces the first-render estimate with real cluster sizes so
+   * `'auto'` picks the best wrap; already-measured groups are skipped, so this
+   * converges after at most one refinement render.
+   */
+  private measureGroupFootprints(host: HTMLElement): void {
+    if (this.groupArrangement() !== "auto" || this.groupsPerLine() === null) return;
+    const flow = this.direction();
+    const known = this.groupFootprints();
+    const aliasFor = this.groupAliasMap();
+    let next: Map<string, GroupFootprint> | null = null;
+    for (const group of this.arrangeableGroups()) {
+      const key = this.groupFootprintKey(group, flow);
+      if (known.has(key)) continue;
+      const rect = host.querySelector<SVGRectElement>(`g.cluster[id$="-${aliasFor.get(group.id)}"] > rect`);
+      const width = Number(rect?.getAttribute("width"));
+      const height = Number(rect?.getAttribute("height"));
+      if (!(width > 0 && height > 0)) continue;
+      next ??= new Map(known);
+      next.set(key, { width, height });
+    }
+    if (next) this.groupFootprints.set(next);
   }
 
   private buildNodeDefinitionLine(node: MermaidRuntime.Node, alias: string, decoration: MermaidRuntime.NodeDecoration | undefined): string {
@@ -1240,7 +1374,9 @@ export class GraphCanvasComponent implements AfterViewInit {
     }
 
     this.applySelectedNodeClass(this.effectiveSelectedNodeId());
-    if (!this.readRenderedGraphHost()?.querySelector(".node")) return;
+    const renderedGraphHost = this.readRenderedGraphHost();
+    if (!renderedGraphHost?.querySelector(".node")) return;
+    this.measureGroupFootprints(renderedGraphHost);
     this.setRenderPhase(this.mainGraphRenderToken, "decorating");
 
     // Clear hashes on structural parent re-render so all subgraph previews are redrawn
@@ -1328,7 +1464,10 @@ export class GraphCanvasComponent implements AfterViewInit {
    * prior viewport or compute a new fit/follow target.
    */
   private prepareStructuralRerender(structureKey: string): void {
-    if (this.lastStructureRenderKey === null) {
+    // A render that supersedes one which never reached the screen is still the
+    // first visible render: there is no previous graph to keep on screen or to
+    // freeze the host size from (freezing an empty host makes fit-all zoom to max).
+    if (this.lastStructureRenderKey === null || !this.readRenderedGraphHost()?.querySelector("svg")) {
       this.lastStructureRenderKey = structureKey;
       return;
     }
@@ -1412,8 +1551,12 @@ export class GraphCanvasComponent implements AfterViewInit {
 
     if (!this.hasFitInitialView) {
       this.hasFitInitialView = true;
+      // Release the swap size lock *before* fitting: the lock holds the host at
+      // the previous graph's size (and CSS-scales the new SVG into it), so
+      // fitting under it frames the old dimensions — e.g. after a direction or
+      // group-wrap change. Unlock + fit run in one task, so no frame paints between.
+      this.clearRenderedGraphHostSizeLock();
       this.cameraRef().fitAll({ animate: false });
-      requestAnimationFrame(() => this.clearRenderedGraphHostSizeLock());
       return;
     }
 

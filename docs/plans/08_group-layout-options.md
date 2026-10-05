@@ -1,6 +1,6 @@
 # Group layout — options
 
-Date: 2026-10-05. Status: Option paper; awaiting choice. Highest-priority UX issue per user feedback.
+Date: 2026-10-05. Status: **A + B done** as `groupArrangement: 'auto'` (see [runbook 05](../runbook/05_group-layout-spike.md#implementation-same-day)); C next, D parked. Highest-priority UX issue per user feedback.
 
 Source: [Group layout spike](../runbook/05_group-layout-spike.md), [work-style demos](../runbook/04_work-style-demos.md). Related: [Roadmap](00_index.md), [LiteGraph feel gap](05_litegraph-feel-gap.md).
 

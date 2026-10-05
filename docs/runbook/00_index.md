@@ -34,5 +34,6 @@ Two sessions drafted docs concurrently on 2026-10-05; they were merged into this
 | 2026-10-05 | User clarified grouping, navigation, and smooth large-flow interaction; requested realistic demos | [Two demos, a live-subgraph fix, and passing checks](04_work-style-demos.md) | Try the demo pages, then choose the next library improvement |
 | 2026-10-05 | Merged two concurrently drafted doc sets into one numbering | Kickoff/conventions folded into this index and [02](02_repository-baseline.md); option papers renumbered to [plans 04–07](../plans/00_index.md#option-papers) | Use the option papers when picking the next step after demo feedback |
 | 2026-10-05 | User tried Large-flow lab: #1 issue is groups laid out in one long strip | [Cause found and fixes measured](05_group-layout-spike.md) | Pick an option in [plan 08](../plans/08_group-layout-options.md) |
+| 2026-10-05 | Implemented automatic packing of independent groups; fixed two camera-fit bugs | [Results and validation](05_group-layout-spike.md#implementation-same-day) | User review in Large-flow lab, then compact connected chains (plan 08 C) |
 
 This is an evolving engineering runbook, not an operational procedure for executing or resetting an environment.
