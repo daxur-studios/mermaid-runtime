@@ -171,6 +171,13 @@ into a compact stack of short rows. Omit `direction` to inherit the outer flow.
 `groups` works on `<mr-graph-canvas>` too, and on any nested `subgraph`'s own
 `Graph.groups` for drill-down levels.
 
+Group titles are drawn above the arrows, on a small pill, so an arrow entering
+a group passes behind its title instead of across the text. In the rendered SVG
+each title sits in a `g.mr-group-labels` layer (not inside its `g.cluster`) and
+carries `data-mr-group-label-for="<cluster id>"`. Tokens:
+`--mr-group-label-fill` (default the canvas surface), `--mr-group-label-fill-opacity`
+(`0.9`), `--mr-group-label-stroke` and `--mr-group-label-radius` (`6px`).
+
 #### Packing independent groups
 
 Groups with **no edges to nodes outside themselves** (parallel trips, one

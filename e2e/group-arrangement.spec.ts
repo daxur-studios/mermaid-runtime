@@ -21,7 +21,9 @@ async function readLayout(page: Page) {
     const rendered = svg.getBoundingClientRect();
     const clusters = [...svg.querySelectorAll('g.cluster')].map((cluster) => {
       const box = cluster.getBoundingClientRect();
-      return { label: cluster.textContent?.trim() ?? '', x: box.x, y: box.y };
+      // Titles are raised out of their cluster, above the arrows.
+      const title = svg.querySelector(`[data-mr-group-label-for="${cluster.id}"]`);
+      return { label: title?.textContent?.trim() ?? '', x: box.x, y: box.y };
     });
     return {
       aspect: Math.max(width, height) / Math.min(width, height),
@@ -51,4 +53,31 @@ test('independent trip groups pack into a viewport-shaped layout in reading orde
   expect(td.fill).toBeGreaterThan(MIN_FITTED_VIEWPORT_FILL);
   const columns = [...td.clusters].sort((a, b) => a.x - b.x).map((cluster) => cluster.label);
   expect(columns).toEqual(['Trip 1', 'Trip 2', 'Trip 3', 'Trip 4', 'Trip 5']);
+});
+
+test('group titles are drawn above the arrows, on a pill', async ({ page }) => {
+  await page.goto('/large-flow');
+  await waitForStableGraph(page);
+
+  const titles = await page.evaluate(() => {
+    const svg = document.querySelector('.graph-canvas__mermaid svg') as SVGSVGElement;
+    return [...svg.querySelectorAll('g.cluster')].map((cluster) => {
+      const title = svg.querySelector(`[data-mr-group-label-for="${cluster.id}"]`);
+      const root = cluster.closest('g.root')!;
+      const edges = root.querySelector(':scope > g.edgePaths');
+      const pill = title?.querySelector(':scope > rect.mr-group-label-backdrop');
+      return {
+        hasTitle: !!title,
+        sameRoot: title?.closest('g.root') === root,
+        // DOCUMENT_POSITION_FOLLOWING: the title is painted after (on top of) the arrows.
+        aboveArrows: !!title && !!edges && (edges.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        pillFill: pill ? getComputedStyle(pill).fillOpacity : null,
+      };
+    });
+  });
+
+  expect(titles.length).toBeGreaterThan(0);
+  for (const title of titles) {
+    expect(title).toEqual({ hasTitle: true, sameRoot: true, aboveArrows: true, pillFill: '0.9' });
+  }
 });

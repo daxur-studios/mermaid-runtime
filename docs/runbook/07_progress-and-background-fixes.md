@@ -41,6 +41,22 @@ New tokens: `--mr-progress-child-ring-opacity`, `--mr-progress-badge-fill`, `--m
 
 Validation: build OK; unit 26/26; e2e 12/12. Lab: no grid lines; at 17% zoom spacing is 16 px (fine level fading, coarse level on), at 43% it is 41 px, at 74% it is 18 px; no flooding.
 
+## Group titles above arrows (same day)
+
+**User-reported:** with the corrected background, arrows entering a group ran across its title ("Trip 5 / Parallel synchronization"). Asked whether a label background or a 5 px backdrop blur would help.
+
+**Code-verified cause:** Mermaid paints each `g.root` as `clusters` → `edgePaths` → `edgeLabels` → `nodes`, and the title lives inside its cluster. Any background or blur on the title is still under the arrows. The user picked option A: raise the titles, then add a pill.
+
+| Change | Where |
+| --- | --- |
+| New `raiseGroupLabels`: moves each `g.cluster-label` into a `g.mr-group-labels` layer inserted before `nodes` (above arrows and edge labels, below nodes), folds old ancestor transforms into the label, tags it `data-mr-group-label-for`, and draws a padded `rect.mr-group-label-backdrop` behind the measured text. Runs in the hidden render sandbox before the swap, so the visible graph never shows the old order and the MutationObserver sees one swap | `group-label.utils.ts` (+ 5 specs), `graph-canvas.component.ts` |
+| Pill style with tokens `--mr-group-label-fill` (surface), `-fill-opacity` (0.9), `-stroke` (outline), `-radius` (6px) | `graph-canvas.component.scss`, README "Node groups" |
+| Group-order e2e reads titles via `data-mr-group-label-for`; new e2e checks every title is in its cluster's root, after `edgePaths`, with the pill | `e2e/group-arrangement.spec.ts` |
+
+Validation: build OK; unit 31/31; e2e 13/13. Large-flow lab, "Grouped steps", top to bottom: the arrows into "Parallel synchronization" pass behind the pill and the title reads cleanly.
+
+Not done: no blur (it costs paint time on large graphs and adds little on a dark canvas; a host can add `backdrop-filter` later only if titles move to HTML). Padding is fixed (8 × 2 px constants), not a token. Subgraph preview thumbnails keep Mermaid's order.
+
 ## Limits
 
 - Presets (`blueprint`, `paper`, `material`), the `cross` pattern and the whole-look tokens are still plan 10 B + D. Midnight is only the default token values.

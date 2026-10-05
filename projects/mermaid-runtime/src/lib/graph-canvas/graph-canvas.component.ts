@@ -13,6 +13,7 @@ import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolve
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
 import { LayoutStabilityTracker } from "./layout-stability";
 import { computeBackgroundPatternLevels, DEFAULT_PATTERN_GAP_PX } from "./background-pattern.utils";
+import { raiseGroupLabels } from "./group-label.utils";
 import { computeProgressBadgeBox, selectVisibleNodeProgress } from "./node-progress.utils";
 import { buildGroupWrapLinks, chooseGroupsPerLine, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
 import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
@@ -1477,6 +1478,8 @@ export class GraphCanvasComponent implements AfterViewInit {
         return;
       }
 
+      // In the hidden sandbox, so the visible graph never shows titles under arrows.
+      raiseGroupLabels(this.renderSandboxHost);
       this.setRenderPhase(token, "swapping");
       renderedGraphHost.innerHTML = this.renderSandboxHost.innerHTML;
       this.renderSandboxHost.replaceChildren();

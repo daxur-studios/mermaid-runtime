@@ -280,6 +280,17 @@
   font-size: 0.78rem;
 }
 
+// Group titles are moved above the arrows (see group-label.utils.ts), with a
+// pill behind each so arrows passing under them never cross the text. Hosts
+// override --mr-group-label-fill, -fill-opacity, -stroke and -radius.
+:host ::ng-deep .mermaid .mr-group-label-backdrop {
+  fill: var(--mr-group-label-fill, var(--mr-surface));
+  fill-opacity: var(--mr-group-label-fill-opacity, 0.9);
+  stroke: var(--mr-group-label-stroke, var(--mr-outline));
+  stroke-width: 1px;
+  rx: var(--mr-group-label-radius, 6px);
+}
+
 :host ::ng-deep .mermaid foreignObject {
   overflow: visible;
 }

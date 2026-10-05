@@ -13,6 +13,7 @@ Started: 2026-10-05. Purpose: retain compact context, findings, decisions, and e
 | [05 Group layout spike](05_group-layout-spike.md) | Why groups render as one long strip; measured Mermaid source variants that fix it |
 | [06 Agent setup and daemon inventory](06_agent-setup-and-daemon-inventory.md) | Synced agent instructions and standards; which daemon graph parts are in the library |
 | [07 Progress and background fixes](07_progress-and-background-fixes.md) | Background zoom fade, progress rings only on unfinished nodes, `NN%` border badge, tooltip removed |
+| [08 Outstanding requests](08_outstanding-requests.md) | Backlog from the lab review: zoomed-out node detail, centred reset, "back to graph" prompt, node shapes, custom HTML nodes, "run complete" banner, title centring |
 | [Plan index](../plans/00_index.md) | Proposed sequence of work and acceptance criteria |
 
 Two sessions drafted docs concurrently on 2026-10-05; they were merged into this single sequence the same day (the other session's kickoff/conventions drafts were folded into this index and [02 Repository baseline](02_repository-baseline.md); its option papers became plans 04–07).
@@ -45,5 +46,7 @@ Agents get these duties from [AGENTS.md](../../AGENTS.md#runbook-and-plans) (syn
 | 2026-10-05 | Moved `ensureMermaidConfigured` and its cache into one shared `mermaid-config.ts`; added A→B→A unit test | [Config-cache bug fixed; build, unit 12/12, e2e 12/12](06_agent-setup-and-daemon-inventory.md#fix-code-verified) | Pick from [plan 09](../plans/09_daemon-extraction-candidates.md) |
 | 2026-10-05 | Fixed background flooding (zoom fade), rings on finished/0% nodes, `NN%` overlap (now a border badge), dark-mode tooltip, unnamed constants | [Changes and validation: build, unit 21/21, e2e 12/12, checked in the lab](07_progress-and-background-fixes.md) | User review in Large-flow lab; then plan 10 B + D or plan 11 roll-up helper |
 | 2026-10-05 | User: the stopgap still showed neon dots and lines, not the agreed preview | [Default is now dots only, midnight colours, the preview's adaptive levels; unit 26/26, e2e 12/12](07_progress-and-background-fixes.md#correction-background-matches-the-agreed-preview-same-day) | User review; then presets (`blueprint`, `paper`, `material`) |
+| 2026-10-05 | User: arrows cross group titles; asked for a background or blur. Mermaid draws titles under arrows, so option A picked: raise titles + pill | [Titles in a layer above arrows, with a tokenised pill; unit 31/31, e2e 13/13](07_progress-and-background-fixes.md#group-titles-above-arrows-same-day) | User review; then presets |
+| 2026-10-05 | User: title pill is more readable; listed new requests (zoomed-out node detail, centred reset, "back to graph" prompt, shapes, custom HTML nodes, a "run complete" top banner); titles look off-centre | [Backlog recorded; titles measured 20–25 units left of centre, cause found](08_outstanding-requests.md) | Fix title centring; pick next item |
 
 This is an evolving engineering runbook, not an operational procedure for executing or resetting an environment.
