@@ -738,26 +738,25 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   private readonly graphStack = signal<GraphFrame[]>([]);
 
-  /** Nodes for the level currently shown — the root input, or the top frame. */
-  private readonly activeNodes = computed<MermaidRuntime.Node[]>(() => {
-    const stack = this.graphStack();
-    const top = stack[stack.length - 1];
-    return top ? top.graph.nodes : this.nodes();
+  /**
+   * Resolve the visible level from current host data, not the snapshot captured
+   * on entry. Immutable run updates must reach an already-open subgraph without
+   * rebuilding navigation or resetting the camera. Resolver reads remain tracked.
+   */
+  private readonly activeGraph = computed<MermaidRuntime.Graph>(() => {
+    let graph: MermaidRuntime.Graph = { nodes: this.nodes(), transitions: this.transitions(), groups: this.groups() };
+    for (const frame of this.graphStack()) {
+      const node = graph.nodes.find(candidate => candidate.id === frame.nodeId);
+      const child = node ? this.resolveSubgraph(node) : null;
+      if (!child) break;
+      graph = child;
+    }
+    return graph;
   });
 
-  /** Transitions for the level currently shown — the root input, or the top frame. */
-  private readonly activeTransitions = computed<MermaidRuntime.Transition[] | null>(() => {
-    const stack = this.graphStack();
-    const top = stack[stack.length - 1];
-    return top ? (top.graph.transitions ?? null) : this.transitions();
-  });
-
-  /** Node groups for the level currently shown — the root input, or the top frame. */
-  private readonly activeGroups = computed<MermaidRuntime.NodeGroup[] | null>(() => {
-    const stack = this.graphStack();
-    const top = stack[stack.length - 1];
-    return top ? (top.graph.groups ?? null) : this.groups();
-  });
+  private readonly activeNodes = computed(() => this.activeGraph().nodes);
+  private readonly activeTransitions = computed(() => this.activeGraph().transitions ?? null);
+  private readonly activeGroups = computed(() => this.activeGraph().groups ?? null);
 
   /** True while inside a subgraph (the stack is non-empty). */
   protected readonly inSubgraph = computed(() => this.graphStack().length > 0);

@@ -1,0 +1,63 @@
+<section class="page-copy">
+  <div class="heading"><h1>{{ stress ? 'Large-flow lab' : 'Trip creation E2E' }}</h1><span class="tag">Synthetic demo</span></div>
+  <p>{{ stress ? 'Compare expanded steps with compact subflows, then run status updates while panning and zooming.' : 'Legacy UI → Kafka + SQL → public API. Compare grouping, inspect steps, and navigate reusable flows.' }}</p>
+</section>
+<section class="toolbar" aria-label="Scenario controls">
+  <label>Environment <select [ngModel]="environment()" (ngModelChange)="environment.set($event)" [disabled]="locked()"><option value="local">Local sandbox</option><option value="dev">Shared dev</option></select></label>
+  @if (stress) {
+    <label>Flow size <select [ngModel]="trips()" (ngModelChange)="trips.set($event); navigate([])" [disabled]="locked()"><option [ngValue]="1">24 steps · 1 trip</option><option [ngValue]="5">120 steps · 5 trips</option><option [ngValue]="10">240 steps · 10 trips</option></select></label>
+  }
+  <label>View <select [ngModel]="view()" (ngModelChange)="changeView($event)"><option value="subflows">Compact subflows</option><option value="grouped">Grouped steps</option><option value="flat">All steps</option></select></label>
+  <label>Layout <select [ngModel]="direction()" (ngModelChange)="direction.set($event)"><option value="LR">Left to right</option><option value="TD">Top to bottom</option></select></label>
+  <label>Scenario <select [ngModel]="fail()" (ngModelChange)="fail.set($event)" [disabled]="locked()"><option [ngValue]="false">Successful trip</option><option [ngValue]="true">SQL timeout</option></select></label>
+  <label>Update cadence <select [ngModel]="speed()" (ngModelChange)="speed.set($event)" [disabled]="playing()"><option [ngValue]="500">2 / second</option><option [ngValue]="250">4 / second</option><option [ngValue]="100">10 / second</option></select></label>
+  <label class="check"><input type="checkbox" [ngModel]="follow()" (ngModelChange)="follow.set($event)"> Follow execution</label>
+  <label class="check"><input type="checkbox" [ngModel]="motion()" (ngModelChange)="motion.set($event)"> Activity pulses</label>
+  <label class="check"><input type="checkbox" [ngModel]="inspector()" (ngModelChange)="inspector.set($event)"> Step details</label>
+</section>
+<section class="runbar" aria-label="Simulation controls">
+  <button class="primary" (click)="toggleRun()">{{ playing() ? 'Pause' : tick() === 0 ? 'Run simulation' : outcome() === 'Complete' || outcome() === 'Failed' ? 'Run again' : 'Resume' }}</button>
+  <button (click)="advance()" [disabled]="playing() || outcome() === 'Complete' || outcome() === 'Failed'">Advance tick</button>
+  <button (click)="reset()">Reset</button>
+  <button (click)="canvas.goToDepth(0)" [disabled]="path().length === 0">Back to overview</button>
+  <span class="outcome" role="status">{{ outcome() }}</span>
+  <span class="muted">{{ trips() * 24 }} total steps · {{ path().length ? '4 steps in subflow' : graph().nodes.length + ' overview nodes' }} · Tick {{ tick() }}</span>
+  <span class="legend"><i class="done"></i> Complete <i class="active"></i> Running <i class="skipped"></i> Skipped <i class="failed"></i> Failed</span>
+</section>
+<div class="graph-shell">
+  <mr-graph-canvas #canvas
+    [nodes]="graph().nodes" [transitions]="graph().transitions ?? null" [groups]="graph().groups ?? null"
+    [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
+    [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()"
+    (nodeContextMenu)="openMenu($event)" [showDetail]="inspector()"
+    [followExecution]="follow()" [replayActive]="!motion()" [showSubgraphPreview]="false"
+    rootLabel="Trip creation" (keydown.escape)="canvas.closeContextMenu()">
+    @if (canvas.contextMenuTarget(); as target) {
+      <div overlay class="context-actions" aria-label="Step actions" [style.--menu-x]="menu().x + 'px'" [style.--menu-y]="menu().y + 'px'">
+        <strong>{{ target.title }}</strong>
+        <button (click)="inspect(target, canvas)">View step details</button>
+        @if (target.subgraph) { <button (click)="canvas.enterSubgraph(target)">Open subflow</button> }
+        <button (click)="canvas.closeContextMenu()">Dismiss</button>
+      </div>
+    }
+    @if (inspector()) {
+      <aside detail class="details" aria-label="Step details">
+        @if (canvas.selectedNode(); as node) {
+          <span class="eyebrow">{{ node.type }} · {{ node.status }}</span>
+          <h2>{{ node.title }}</h2><p>{{ node.detail }}</p>
+          @if (node.error) { <p class="error">{{ node.error }}</p> }
+          @if (node.subgraph) { <button (click)="canvas.enterSelectedSubgraph()">Open subflow</button> }
+          @if (node.progressPercent != null) { <label class="progress-label">Simulated progress {{ node.progressPercent }}%<progress max="100" [value]="node.progressPercent"></progress></label> }
+          <small class="node-id">{{ node.id }}</small>
+        }
+        <hr><h3>Trip parameters</h3>
+        <label>Depot <input type="text" [ngModel]="depot()" (ngModelChange)="depot.set($event)" [disabled]="locked()"></label>
+        <label class="check"><input type="checkbox" [ngModel]="headed()" (ngModelChange)="headed.set($event)" [disabled]="locked()"> Headed Playwright</label>
+        <small>Demo configuration only. Reset to edit after a run starts.</small>
+        <hr><h3>Captured context · sample trip</h3><pre>{{ context() }}</pre>
+        <p class="hint">Right-click a node for actions. Double-click a subflow to enter; use the breadcrumb to return.</p>
+      </aside>
+    }
+  </mr-graph-canvas>
+</div>
+<footer>No external systems are called. Pulses represent simulated step changes, not observed network traffic.</footer>

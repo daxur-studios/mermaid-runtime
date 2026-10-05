@@ -2,8 +2,9 @@
 .demo-header { display: flex; align-items: center; gap: 2rem; padding: .75rem 1.25rem; border-bottom: 1px solid var(--line); background: rgba(11, 16, 32, .94); z-index: 10; }
 .brand { color: #f8fafc; text-decoration: none; font-weight: 750; letter-spacing: -.02em; white-space: nowrap; }
 .brand span { color: #818cf8; font-size: .75rem; text-transform: uppercase; letter-spacing: .12em; margin-left: .35rem; }
-nav { display: flex; gap: .35rem; overflow-x: auto; }
+nav { display: flex; gap: .35rem; overflow-x: auto; min-width: 0; }
 nav a { color: #94a3b8; text-decoration: none; padding: .5rem .75rem; border-radius: .5rem; font-size: .88rem; white-space: nowrap; }
 nav a:hover, nav a.active { color: #fff; background: #252d49; }
+.demo-header, .demo-main { min-width: 0; }
 .demo-main { min-height: 0; }
 @media (max-width: 700px) { .demo-header { align-items: flex-start; flex-direction: column; gap: .5rem; } nav { width: 100%; } }

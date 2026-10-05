@@ -2,6 +2,18 @@
 
 An Angular library providing an interactive, pan/zoom task-graph viewer built on Mermaid. Ships a status-coloured flowchart with follow-execution camera, subgraph drill-down, an optional inspector sidebar, and a pluggable ref-loader seam.
 
+## Development runbook and plans
+
+The [runbook](docs/runbook/00_index.md) records context, code findings, and design
+discussions. The linked [plans](docs/plans/00_index.md) describe proposed work on
+interactive E2E nodes, observed activity, and feature-scoped system views.
+Draft plans are not implemented capabilities.
+
+Run `npm run demo` to try the synthetic [Work E2E](http://localhost:4200/work-e2e)
+and [Large-flow lab](http://localhost:4200/large-flow) pages. Compare grouped steps,
+compact subflows, right-click details, and live updates with 24–240 steps.
+See the [walkthrough](docs/runbook/04_work-style-demos.md) for scope and limitations.
+
 ## Packages
 
 | Package | Description |

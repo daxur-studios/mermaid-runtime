@@ -10,6 +10,8 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 })
 export class App {
   protected readonly navItems = [
+    { path: '/work-e2e', label: 'Work E2E' },
+    { path: '/large-flow', label: 'Large-flow lab' },
     { path: '/fullscreen', label: 'Full screen' },
     { path: '/constrained', label: 'Constrained' },
     { path: '/subgraphs', label: 'Subgraphs & groups' },

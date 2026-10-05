@@ -1,6 +1,8 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
+  { path: 'work-e2e', loadComponent: () => import('./pages/work-e2e.page').then(m => m.WorkE2ePage) },
+  { path: 'large-flow', data: { stress: true }, loadComponent: () => import('./pages/work-e2e.page').then(m => m.WorkE2ePage) },
   { path: 'testing/layout-regression', loadComponent: () => import('./testing/layout-regression.page').then(m => m.LayoutRegressionPage) },
   { path: 'fullscreen', loadComponent: () => import('./pages/fullscreen.page').then(m => m.FullscreenPage) },
   { path: 'constrained', loadComponent: () => import('./pages/constrained.page').then(m => m.ConstrainedPage) },
