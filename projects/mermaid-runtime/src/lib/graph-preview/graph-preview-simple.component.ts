@@ -16,11 +16,8 @@ import mermaid from 'mermaid';
 
 import { MermaidRuntime } from '../task-graph-model';
 import { ensureMermaidTemporaryRenderIsolation } from '../mermaid-render-sandbox';
-import {
-  buildMermaidRuntimeConfig,
-  readMermaidRuntimeConfigKey,
-  type MermaidRuntimeConfig,
-} from '../mermaid-theme';
+import { ensureMermaidConfigured } from '../mermaid-config';
+import { buildMermaidRuntimeConfig, type MermaidRuntimeConfig } from '../mermaid-theme';
 import {
   hashPreviewStatuses,
   hashPreviewStructure,
@@ -30,14 +27,6 @@ import {
 import { DEFAULT_PREVIEW_STATUS_STYLES } from './status-styles';
 
 let instanceCounter = 0;
-let activeMermaidConfigKey: string | null = null;
-
-function ensureMermaidConfigured(config: MermaidRuntimeConfig): void {
-  const key = readMermaidRuntimeConfigKey(config);
-  if (activeMermaidConfigKey === key) return;
-  activeMermaidConfigKey = key;
-  mermaid.initialize(config);
-}
 
 /**
  * Reworked simple shape preview of a graph — renders a compact node graph

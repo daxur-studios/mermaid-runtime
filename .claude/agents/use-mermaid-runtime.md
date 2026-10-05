@@ -84,7 +84,7 @@ Most fill/background rules fall back to a built-in colour if you skip this, but 
 Paint from data you already pass — nothing to wire up beyond the theming vars above:
 
 - **Selected ring** (`[selectedNodeId]`) and **current ring** (`[currentNodeId]`) are two separate rings, same offset today — a node that's both shows overlapping, not nested, rings.
-- **Progress trace** grows along the node border with `progressPercent`; green (`--app-color-pass`) normally, red (`--app-color-fail`) once `status: 'failed'`.
+- **Progress trace** grows along the node border with `progressPercent`, with an `NN%` badge on the bottom-right border; green (`--app-color-pass`) normally, red (`--app-color-fail`) once `status: 'failed'`. `activeChildNodeProgresses` adds one fainter ring per running child. Rings show only on unfinished nodes above 0% unless `[progressRings]="'always'"`; `[childProgressRings]="false"` hides the child rings.
 - **Subgraph corner badge**: drillable nodes get a solid accent border + a small "+" badge top-right, not a dashed outline.
 
 ## Relocating built-in chrome (minimap / camera controls / breadcrumb)
@@ -107,7 +107,7 @@ Three pieces of chrome render built-in by default: corner minimap, floating zoom
 <mr-graph-breadcrumb [breadcrumbs]="canvas.breadcrumb()" (depthSelected)="canvas.goToDepth($event)" />
 ```
 
-`showMinimap`/`showBreadcrumb` turn each off entirely instead of relocating it. `[direction]` (`model<'TD'|'LR'>`) sets flow direction; `[backgroundEffect]` (`'grid-dots'|'grid'|'dots'|'none'|'custom'`) controls the viewport background; `[mermaidConfig]` overrides the whole Mermaid render config for hosts that need custom `themeVariables` beyond `[mermaidTheme]`.
+`showMinimap`/`showBreadcrumb` turn each off entirely instead of relocating it. `[direction]` (`model<'TD'|'LR'>`) sets flow direction; `[backgroundEffect]` (`'dots'` default, `'grid'|'grid-dots'|'none'|'custom'`) controls the viewport background (zoom-adaptive; style via `--mr-pattern-ink`/`-opacity`/`-size`/`-dot-radius`/`-line-width`); `[mermaidConfig]` overrides the whole Mermaid render config for hosts that need custom `themeVariables` beyond `[mermaidTheme]`.
 
 ## Replaying a recorded run
 
@@ -308,6 +308,18 @@ can visually clip to the cluster border instead of reaching the actual node.
 If the group's nodes connect to the rest of the graph (the common case, e.g. a
 chain split into groups), omit `direction` — the group still renders as a
 labelled box, just without the extra compaction.
+
+**Packing independent groups** — `[groupArrangement]` (on both components)
+controls where groups with no edges to the rest of the graph sit relative to
+each other (e.g. parallel trips or subflows):
+
+- `'auto'` (default): steps flow in the outer direction, groups line up across
+  it and wrap into the grid that fits the viewport at the largest zoom.
+  Re-packs only when the viewport aspect changes by more than 30%.
+- `{ groupsPerLine: 3 }`: fixed wrap, for a specific look.
+- `'mermaid'`: Mermaid's own placement (one long strip of groups).
+
+Connected groups and groups with an explicit `direction` are left alone.
 
 ## Common mistakes
 

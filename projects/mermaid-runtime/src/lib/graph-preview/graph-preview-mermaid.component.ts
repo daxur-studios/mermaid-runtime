@@ -17,11 +17,8 @@ import mermaid from 'mermaid';
 
 import { MermaidRuntime } from '../task-graph-model';
 import { ensureMermaidTemporaryRenderIsolation } from '../mermaid-render-sandbox';
-import {
-  buildMermaidRuntimeConfig,
-  readMermaidRuntimeConfigKey,
-  type MermaidRuntimeConfig,
-} from '../mermaid-theme';
+import { ensureMermaidConfigured } from '../mermaid-config';
+import { buildMermaidRuntimeConfig, type MermaidRuntimeConfig } from '../mermaid-theme';
 import {
   hashPreviewStatuses,
   hashPreviewStructure,
@@ -32,25 +29,6 @@ import { DEFAULT_PREVIEW_STATUS_STYLES } from './status-styles';
 
 /** Query param used on a node's click-suppressed href so its element can be found post-render. */
 const NODE_HREF_PARAM = 'node';
-
-/** Key for the Mermaid config most recently applied to Mermaid's module-global renderer. */
-let activeMermaidConfigKey: string | null = null;
-
-/**
- * Applies Mermaid's module-global render config when it changed.
- *
- * PURPOSE: Mermaid keeps its render config as module-global state; whichever caller
- * initializes it last wins app-wide.
- *
- * VALUE: Graph previews can follow a host theme change without locking Mermaid to the
- * first dark/light config that happened to render.
- */
-function ensureMermaidConfigured(config: MermaidRuntimeConfig): void {
-  const key = readMermaidRuntimeConfigKey(config);
-  if (activeMermaidConfigKey === key) return;
-  activeMermaidConfigKey = key;
-  mermaid.initialize(config);
-}
 
 /** Running counter so each component instance gets a unique Mermaid render-id prefix. */
 let instanceCounter = 0;

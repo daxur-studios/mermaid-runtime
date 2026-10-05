@@ -10,8 +10,10 @@
     [style.--zoom-scale]="cameraState().scale"
     [style.--pan-x.px]="cameraState().x"
     [style.--pan-y.px]="cameraState().y"
-    [style.--small-dot-opacity]="smallDotOpacity()"
-    [style.--large-grid-opacity]="largeGridOpacity()"
+    [style.--mr-pattern-fine-gap.px]="backgroundPatternLevels().fineGapPx"
+    [style.--mr-pattern-fine-fade]="backgroundPatternLevels().fineFade"
+    [style.--mr-pattern-coarse-gap.px]="backgroundPatternLevels().coarseGapPx"
+    [style.--mr-pattern-coarse-fade]="backgroundPatternLevels().coarseFade"
   >
     <mr-graph-camera
       class="graph-canvas__camera"

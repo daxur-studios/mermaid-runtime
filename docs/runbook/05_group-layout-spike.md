@@ -1,6 +1,6 @@
 # Group layout spike
 
-Date: 2026-10-05. Status: Findings recorded; no library change made yet.
+Date: 2026-10-05. Status: Findings recorded; plan 08 options A + B implemented the same day (see [Implementation](#implementation-same-day)).
 
 Source: User feedback after trying the [Large-flow lab](04_work-style-demos.md). Related: [Group layout options](../plans/08_group-layout-options.md), [LiteGraph feel gap](../plans/05_litegraph-feel-gap.md).
 

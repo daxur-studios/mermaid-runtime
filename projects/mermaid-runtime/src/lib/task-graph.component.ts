@@ -139,10 +139,26 @@ export class TaskGraphComponent {
   /**
    * Viewport background treatment behind the rendered graph.
    *
-   * VALUE: Preserves the existing grid/dot default while letting hosts disable
-   * it, choose a simpler preset, or supply their own CSS-variable background.
+   * VALUE: Dots by default; hosts can pick grid lines, both, none, or supply
+   * their own CSS-variable background.
    */
-  readonly backgroundEffect = input<MermaidRuntime.GraphBackgroundEffect>('grid-dots');
+  readonly backgroundEffect = input<MermaidRuntime.GraphBackgroundEffect>('dots');
+
+  /**
+   * Which nodes draw their progress ring.
+   *
+   * VALUE: By default finished and 0% nodes draw none, so rings mark only
+   * work in progress; `always` restores the older draw-everything behaviour.
+   */
+  readonly progressRings = input<MermaidRuntime.ProgressRingVisibility>('active');
+
+  /**
+   * Whether a node also draws one fainter ring per running child node
+   * (`activeChildNodeProgresses`), outside its overall ring.
+   *
+   * VALUE: Hosts that find stacked rings busy can keep just the overall ring.
+   */
+  readonly childProgressRings = input<boolean>(true);
 
   /** Breadcrumb label for the root (top-level) graph. */
   readonly rootLabel = input<string>('Main');

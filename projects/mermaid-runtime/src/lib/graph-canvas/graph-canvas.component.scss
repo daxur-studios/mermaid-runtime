@@ -7,18 +7,19 @@
   border-radius: 6px;
 
   // Theme custom properties
-  --mr-surface: var(--mat-sys-surface, #0f0b21);
+  --mr-surface: var(--mat-sys-surface, #14161b);
   --mr-outline: var(--mat-sys-outline-variant, #3a3f58);
-  --mr-grid-line: var(--app-color-graph-grid-line, #8b5cf6);
-  --mr-grid-dot: var(--app-color-graph-grid-dot, #00f0ff);
-  --mr-grid-large-size: var(--app-graph-grid-large-size, 120px);
-  --mr-grid-small-size: var(--app-graph-grid-small-size, 30px);
-  --mr-grid-line-width: var(--app-graph-grid-line-width, 1px);
-  --mr-grid-line-opacity: var(--app-graph-grid-line-opacity, var(--large-grid-opacity, 0.22));
-  --mr-grid-dot-opacity: var(--app-graph-grid-dot-opacity, var(--small-dot-opacity, 0.36));
-  --mr-grid-large-dot-opacity: var(--app-graph-grid-large-dot-opacity, var(--large-grid-opacity, 0.26));
-  --mr-grid-dot-radius: var(--app-graph-grid-dot-radius, 1.6px);
-  --mr-grid-large-dot-radius: var(--app-graph-grid-large-dot-radius, 2.2px);
+  // Background pattern, "midnight" look: neutral ink, mixed toward the surface so
+  // it never competes with the graph. Hosts override --mr-pattern-ink, -opacity,
+  // -size, -dot-radius and -line-width on an ancestor (e.g. mr-task-graph); the
+  // older --app-*graph-grid-* tokens still apply when those are unset.
+  --mr-pattern-gap: var(--mr-pattern-size, var(--app-graph-grid-small-size, 24px));
+  --mr-pattern-dot-color: var(--mr-pattern-ink, var(--app-color-graph-grid-dot, #8a94a8));
+  --mr-pattern-line-color: var(--mr-pattern-ink, var(--app-color-graph-grid-line, #8a94a8));
+  --mr-pattern-dot-alpha: var(--mr-pattern-opacity, var(--app-graph-grid-dot-opacity, 0.22));
+  --mr-pattern-line-alpha: var(--mr-pattern-opacity, var(--app-graph-grid-line-opacity, 0.22));
+  --mr-pattern-dot-r: var(--mr-pattern-dot-radius, var(--app-graph-grid-dot-radius, 1.6px));
+  --mr-pattern-line-w: var(--mr-pattern-line-width, var(--app-graph-grid-line-width, 1px));
   --mr-background-blend-mode: normal;
   --mr-overlay-hover: var(--app-color-overlay-hover, rgba(255, 255, 255, 0.12));
 
@@ -44,48 +45,65 @@
   min-height: inherit;
   background-color: var(--mr-surface);
   background-blend-mode: var(--mr-background-blend-mode);
+  // Two levels of one lattice (see computeBackgroundPatternLevels): the fine
+  // level fades in as zoom spreads it out; the coarse level (every 4th point,
+  // drawn over it so those points read brighter) fades out as it spreads. The
+  // component sets each level's on-screen gap and fade on this element, so the
+  // colours below are declared here: a custom property's var() resolves where
+  // it is declared.
+  --mr-pattern-fine-dot: color-mix(in srgb, var(--mr-pattern-dot-color) calc(var(--mr-pattern-dot-alpha) * var(--mr-pattern-fine-fade, 1) * 100%), transparent);
+  --mr-pattern-coarse-dot: color-mix(in srgb, var(--mr-pattern-dot-color) calc(var(--mr-pattern-dot-alpha) * var(--mr-pattern-coarse-fade, 0) * 100%), transparent);
+  --mr-pattern-fine-line: color-mix(in srgb, var(--mr-pattern-line-color) calc(var(--mr-pattern-line-alpha) * var(--mr-pattern-fine-fade, 1) * 100%), transparent);
+  --mr-pattern-coarse-line: color-mix(in srgb, var(--mr-pattern-line-color) calc(var(--mr-pattern-line-alpha) * var(--mr-pattern-coarse-fade, 0) * 100%), transparent);
+  // Dots are centred on lattice points (tile centre shifted back by half a
+  // tile), matching where grid lines cross, so both stay anchored to the graph.
+  --mr-pattern-fine-dot-position: calc(var(--pan-x, 0px) - var(--mr-pattern-fine-gap) / 2) calc(var(--pan-y, 0px) - var(--mr-pattern-fine-gap) / 2);
+  --mr-pattern-coarse-dot-position: calc(var(--pan-x, 0px) - var(--mr-pattern-coarse-gap) / 2) calc(var(--pan-y, 0px) - var(--mr-pattern-coarse-gap) / 2);
 
   &--background-none {
     background-image: none;
   }
 
-  &--background-grid-dots {
+  &--background-dots {
     background-image:
-      linear-gradient(to right, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width)),
-      linear-gradient(to bottom, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width)),
-      radial-gradient(circle, color-mix(in srgb, var(--mr-grid-dot) calc(var(--mr-grid-dot-opacity) * 100%), transparent) var(--mr-grid-dot-radius), transparent var(--mr-grid-dot-radius));
+      radial-gradient(circle, var(--mr-pattern-coarse-dot) var(--mr-pattern-dot-r), transparent var(--mr-pattern-dot-r)),
+      radial-gradient(circle, var(--mr-pattern-fine-dot) var(--mr-pattern-dot-r), transparent var(--mr-pattern-dot-r));
     background-size:
-      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
-      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
-      calc(var(--mr-grid-small-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-small-size) * var(--zoom-scale, 1));
+      var(--mr-pattern-coarse-gap) var(--mr-pattern-coarse-gap),
+      var(--mr-pattern-fine-gap) var(--mr-pattern-fine-gap);
     background-position:
-      var(--pan-x, 0px) var(--pan-y, 0px),
-      var(--pan-x, 0px) var(--pan-y, 0px),
-      var(--pan-x, 0px) var(--pan-y, 0px);
+      var(--mr-pattern-coarse-dot-position),
+      var(--mr-pattern-fine-dot-position);
   }
 
   &--background-grid {
     background-image:
-      linear-gradient(to right, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width)),
-      linear-gradient(to bottom, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-line-opacity) * 100%), transparent) var(--mr-grid-line-width), transparent var(--mr-grid-line-width));
+      linear-gradient(to right, var(--mr-pattern-coarse-line) var(--mr-pattern-line-w), transparent var(--mr-pattern-line-w)),
+      linear-gradient(to bottom, var(--mr-pattern-coarse-line) var(--mr-pattern-line-w), transparent var(--mr-pattern-line-w)),
+      linear-gradient(to right, var(--mr-pattern-fine-line) var(--mr-pattern-line-w), transparent var(--mr-pattern-line-w)),
+      linear-gradient(to bottom, var(--mr-pattern-fine-line) var(--mr-pattern-line-w), transparent var(--mr-pattern-line-w));
     background-size:
-      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
-      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1));
-    background-position:
-      var(--pan-x, 0px) var(--pan-y, 0px),
-      var(--pan-x, 0px) var(--pan-y, 0px);
+      var(--mr-pattern-coarse-gap) var(--mr-pattern-coarse-gap),
+      var(--mr-pattern-coarse-gap) var(--mr-pattern-coarse-gap),
+      var(--mr-pattern-fine-gap) var(--mr-pattern-fine-gap),
+      var(--mr-pattern-fine-gap) var(--mr-pattern-fine-gap);
+    background-position: var(--pan-x, 0px) var(--pan-y, 0px);
   }
 
-  &--background-dots {
+  // Fine dots with grid lines on the coarse level only.
+  &--background-grid-dots {
     background-image:
-      radial-gradient(circle, color-mix(in srgb, var(--mr-grid-line) calc(var(--mr-grid-large-dot-opacity) * 100%), transparent) var(--mr-grid-large-dot-radius), transparent var(--mr-grid-large-dot-radius)),
-      radial-gradient(circle, color-mix(in srgb, var(--mr-grid-dot) calc(var(--mr-grid-dot-opacity) * 100%), transparent) var(--mr-grid-dot-radius), transparent var(--mr-grid-dot-radius));
+      linear-gradient(to right, var(--mr-pattern-coarse-line) var(--mr-pattern-line-w), transparent var(--mr-pattern-line-w)),
+      linear-gradient(to bottom, var(--mr-pattern-coarse-line) var(--mr-pattern-line-w), transparent var(--mr-pattern-line-w)),
+      radial-gradient(circle, var(--mr-pattern-fine-dot) var(--mr-pattern-dot-r), transparent var(--mr-pattern-dot-r));
     background-size:
-      calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-large-size) * var(--zoom-scale, 1)),
-      calc(var(--mr-grid-small-size) * var(--zoom-scale, 1)) calc(var(--mr-grid-small-size) * var(--zoom-scale, 1));
+      var(--mr-pattern-coarse-gap) var(--mr-pattern-coarse-gap),
+      var(--mr-pattern-coarse-gap) var(--mr-pattern-coarse-gap),
+      var(--mr-pattern-fine-gap) var(--mr-pattern-fine-gap);
     background-position:
       var(--pan-x, 0px) var(--pan-y, 0px),
-      var(--pan-x, 0px) var(--pan-y, 0px);
+      var(--pan-x, 0px) var(--pan-y, 0px),
+      var(--mr-pattern-fine-dot-position);
   }
 
   &--background-custom {
@@ -458,9 +476,28 @@
   stroke: var(--app-color-fail) !important;
 }
 
-:host ::ng-deep .mermaid .node .mr-node-progress-text {
-  fill: var(--mat-sys-on-surface-variant);
-  font-size: 0.68rem;
+// One fainter ring per running child node, stacked outside the overall ring.
+:host ::ng-deep .mermaid .node .mr-node-progress-trace--child {
+  opacity: var(--mr-progress-child-ring-opacity, 0.5);
+}
+
+// The overall percentage: a small pill on the node's bottom-right border, so
+// it never collides with edges, group titles or the node's own title.
+// `!important` on the pill: Mermaid's ID-scoped theme CSS styles `.node rect`.
+:host ::ng-deep .mermaid .node .mr-node-progress-badge rect {
+  fill: var(--mr-progress-badge-fill, var(--mr-surface)) !important;
+  stroke: var(--mr-progress-badge-stroke, var(--app-color-pass)) !important;
+  stroke-width: 1px !important;
+}
+
+:host ::ng-deep .mermaid .node.failed .mr-node-progress-badge rect {
+  stroke: var(--app-color-fail) !important;
+}
+
+:host ::ng-deep .mermaid .node .mr-node-progress-badge text {
+  fill: var(--mr-progress-badge-text, var(--mat-sys-on-surface, #e6e6e6)) !important;
+  font-size: var(--mr-progress-badge-font-size, 9px);
+  font-variant-numeric: tabular-nums;
   user-select: none;
 }
 

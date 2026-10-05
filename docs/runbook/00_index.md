@@ -11,11 +11,15 @@ Started: 2026-10-05. Purpose: retain compact context, findings, decisions, and e
 | [03 Direction and open questions](03_direction-and-open-questions.md) | Initial proposals, tradeoffs, and unresolved decisions |
 | [04 Work-style demos](04_work-style-demos.md) | User clarification, demo walkthrough, and implementation evidence |
 | [05 Group layout spike](05_group-layout-spike.md) | Why groups render as one long strip; measured Mermaid source variants that fix it |
+| [06 Agent setup and daemon inventory](06_agent-setup-and-daemon-inventory.md) | Synced agent instructions and standards; which daemon graph parts are in the library |
+| [07 Progress and background fixes](07_progress-and-background-fixes.md) | Background zoom fade, progress rings only on unfinished nodes, `NN%` border badge, tooltip removed |
 | [Plan index](../plans/00_index.md) | Proposed sequence of work and acceptance criteria |
 
 Two sessions drafted docs concurrently on 2026-10-05; they were merged into this single sequence the same day (the other session's kickoff/conventions drafts were folded into this index and [02 Repository baseline](02_repository-baseline.md); its option papers became plans 04–07).
 
 ## Working convention
+
+Agents get these duties from [AGENTS.md](../../AGENTS.md#runbook-and-plans) (synced to every tool's instruction file); this section is the full version.
 
 - Use `NN_short-name.md`, starting at `00`, independently in each directory. Keep existing filenames stable when linking to them.
 - Runbook entries record what was discussed, discovered, tried, or decided. Plans describe work still to do.
@@ -35,5 +39,11 @@ Two sessions drafted docs concurrently on 2026-10-05; they were merged into this
 | 2026-10-05 | Merged two concurrently drafted doc sets into one numbering | Kickoff/conventions folded into this index and [02](02_repository-baseline.md); option papers renumbered to [plans 04–07](../plans/00_index.md#option-papers) | Use the option papers when picking the next step after demo feedback |
 | 2026-10-05 | User tried Large-flow lab: #1 issue is groups laid out in one long strip | [Cause found and fixes measured](05_group-layout-spike.md) | Pick an option in [plan 08](../plans/08_group-layout-options.md) |
 | 2026-10-05 | Implemented automatic packing of independent groups; fixed two camera-fit bugs | [Results and validation](05_group-layout-spike.md#implementation-same-day) | User review in Large-flow lab, then compact connected chains (plan 08 C) |
+| 2026-10-05 | Set up synced agent instructions (`AGENTS.md` → Claude/Copilot/Codex, CI check) and Angular/agent standards; checked daemon Kanban mini-flows | [Setup, standards check, config-cache bug, daemon inventory](06_agent-setup-and-daemon-inventory.md) | Pick from [plan 09](../plans/09_daemon-extraction-candidates.md); fix config cache |
+| 2026-10-05 | Checked multi-ring subgraph progress; user reported background dots flooding the canvas when zoomed out | Rings drawn by the library, roll-up daemon-only ([06](06_agent-setup-and-daemon-inventory.md#daemon-inventory-code-verified)); two background bugs found ([plan 10](../plans/10_canvas-theme-and-background-options.md#cause-code-verified)) | Pick from plan 10 |
+| 2026-10-05 | User tried the theme preview; confirmed progress-text overlap, finished-node ring; reported dark-mode tooltip | [Plan 10 decision](../plans/10_canvas-theme-and-background-options.md#decision-user-2026-10-05): B + D, dots, neon dropped, hex/triangles parked. Progress and tooltip issues collected in [plan 11](../plans/11_node-progress-and-overlay-fixes.md) | Confirm default preset; pick label placement; start with plan 10 bug fixes and plan 11 ring/tooltip |
+| 2026-10-05 | Moved `ensureMermaidConfigured` and its cache into one shared `mermaid-config.ts`; added A→B→A unit test | [Config-cache bug fixed; build, unit 12/12, e2e 12/12](06_agent-setup-and-daemon-inventory.md#fix-code-verified) | Pick from [plan 09](../plans/09_daemon-extraction-candidates.md) |
+| 2026-10-05 | Fixed background flooding (zoom fade), rings on finished/0% nodes, `NN%` overlap (now a border badge), dark-mode tooltip, unnamed constants | [Changes and validation: build, unit 21/21, e2e 12/12, checked in the lab](07_progress-and-background-fixes.md) | User review in Large-flow lab; then plan 10 B + D or plan 11 roll-up helper |
+| 2026-10-05 | User: the stopgap still showed neon dots and lines, not the agreed preview | [Default is now dots only, midnight colours, the preview's adaptive levels; unit 26/26, e2e 12/12](07_progress-and-background-fixes.md#correction-background-matches-the-agreed-preview-same-day) | User review; then presets (`blueprint`, `paper`, `material`) |
 
 This is an evolving engineering runbook, not an operational procedure for executing or resetting an environment.

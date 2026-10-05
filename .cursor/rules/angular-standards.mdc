@@ -1,0 +1,17 @@
+---
+description: Angular 20 rules for the mermaid-runtime library and demo — control flow, signal I/O, zoneless-safe, theming
+globs: projects/**/*
+alwaysApply: false
+---
+
+# Angular standards
+
+Read [`docs/angular-standards.md`](../../docs/angular-standards.md) before editing. Short version:
+
+- `@if` / `@for` (with `track`) / `@switch`, not `*ngIf` / `*ngFor` / `*ngSwitch`
+- `input()` / `output()`, not `@Input` / `@Output`; reactive forms, not `ngModel`
+- `signal()` / `computed()`; the library must work in zoneless hosts
+- `inject()` + `DestroyRef` cleanup; separate `.ts` / `.html` / `.scss`; library components OnPush with `mr-` selectors
+- No hardcoded status colours: `--app-color-*` from the host, `--mr-*` with `:host` defaults
+
+Reference: `projects/mermaid-runtime/src/lib/graph-preview/`. Don't migrate untouched legacy code.

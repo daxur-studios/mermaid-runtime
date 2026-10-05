@@ -39,6 +39,18 @@ export namespace MermaidRuntime {
   export type GraphBackgroundEffect = 'none' | 'grid-dots' | 'grid' | 'dots' | 'custom';
 
   /**
+   * Which nodes draw their progress ring.
+   *
+   * PURPOSE: A ring on a finished node reads as a second border, and a 0% ring
+   * shows a label with nothing to say.
+   *
+   * VALUE: `active` (default) draws rings only on nodes that haven't settled
+   * (not complete, failed or skipped) and are above 0%; `always` keeps the
+   * older behaviour of drawing any node with a progress value.
+   */
+  export type ProgressRingVisibility = 'active' | 'always';
+
+  /**
    * Execution state of a single graph node.
    *
    * PURPOSE: Drive per-node status colouring without binding the viewer to one

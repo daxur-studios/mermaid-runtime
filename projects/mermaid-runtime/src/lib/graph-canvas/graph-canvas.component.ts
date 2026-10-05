@@ -8,9 +8,12 @@ import { GraphCameraComponent, type GraphCameraState, type GraphRect } from "../
 import { MinimapComponent } from "../minimap/minimap.component";
 import { GraphBreadcrumbComponent, type GraphBreadcrumbEntry } from "../graph-breadcrumb/graph-breadcrumb.component";
 import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, type MermaidRuntimeConfig } from "../mermaid-theme";
+import { ensureMermaidConfigured } from "../mermaid-config";
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
 import { LayoutStabilityTracker } from "./layout-stability";
+import { computeBackgroundPatternLevels, DEFAULT_PATTERN_GAP_PX } from "./background-pattern.utils";
+import { computeProgressBadgeBox, selectVisibleNodeProgress } from "./node-progress.utils";
 import { buildGroupWrapLinks, chooseGroupsPerLine, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
 import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
 
@@ -222,11 +225,22 @@ const NODE_PROGRESS_TRACE_OFFSET_PX = 5;
 /** CSS class for the shape-tracing progress ring (see graph-canvas.component.scss). */
 const PROGRESS_TRACE_CLASS = "mr-node-progress-trace";
 
-/** CSS class for the small progress-percent text shown above a node's progress trace. */
-const PROGRESS_TEXT_CLASS = "mr-node-progress-text";
+/** CSS class for the small `NN%` badge on a node's bottom-right border (see computeProgressBadgeBox). */
+const PROGRESS_BADGE_CLASS = "mr-node-progress-badge";
 
-/** Vertical gap (px) between the progress trace's topmost point and its percentage text. */
-const PROGRESS_TEXT_GAP_PX = 6;
+/**
+ * Extra outward offset (px) for each running-child ring beyond the overall ring.
+ *
+ * VALUE: Separates stacked rings by more than their stroke width, so each
+ * stays readable as its own ring.
+ */
+const NODE_PROGRESS_STACK_OFFSET_PX = 4;
+
+/**
+ * Modifier class on the fainter per-running-child rings. Their opacity is the
+ * `--mr-progress-child-ring-opacity` token (see graph-canvas.component.scss).
+ */
+const PROGRESS_TRACE_CHILD_CLASS = "mr-node-progress-trace--child";
 
 /**
  * Marker class applied to every shape-offset overlay element (selected/current
@@ -312,8 +326,16 @@ const STRUCTURAL_LAYOUT_BOUNDS_EPSILON_PX = 0.5;
 /** Running counter so each canvas instance gets a unique Mermaid render-id prefix. */
 let graphCanvasInstanceCounter = 0;
 
-/** Key for the Mermaid config most recently applied to Mermaid's module-global renderer. */
-let activeMermaidConfigKey: string | null = null;
+/**
+ * Reads a resolved CSS length custom property in px, or `null` when it is
+ * missing or not a plain px value (e.g. a host used `rem`).
+ */
+function readCssPxProperty(element: Element, propertyName: string): number | null {
+  const raw = getComputedStyle(element).getPropertyValue(propertyName).trim();
+  if (!raw.endsWith("px")) return null;
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 
 /**
  * Lowest valid percentage shown in a task graph node progress bar.
@@ -354,22 +376,6 @@ const DEFAULT_MERMAID_OPTIONS: MermaidRuntimeConfig = {
     curve: "basis",
   },
 };
-
-/**
- * Applies Mermaid's module-global render config when it changed.
- *
- * PURPOSE: Mermaid keeps its render config as module-global state; whichever
- * caller initializes it last wins app-wide.
- *
- * VALUE: The main graph and its subgraph previews can render with different
- * configs without reinitializing Mermaid on every single call.
- */
-function ensureMermaidConfigured(config: MermaidRuntimeConfig): void {
-  const key = readMermaidRuntimeConfigKey(config);
-  if (activeMermaidConfigKey === key) return;
-  activeMermaidConfigKey = key;
-  mermaid.initialize(config);
-}
 
 /**
  * Interactive Mermaid graph canvas — the rendering + interaction core.
@@ -555,17 +561,23 @@ export class GraphCanvasComponent implements AfterViewInit {
     return cameraComp ? cameraComp.cameraState() : { x: 0, y: 0, scale: 1.0 };
   });
 
-  protected readonly smallDotOpacity = computed(() => {
-    const scale = this.cameraState().scale;
-    // Keep dots visible down to 0.22 zoom, and increase their max visibility
-    return Math.max(0, Math.min(0.25, (scale - 0.22) * 0.45));
-  });
+  /**
+   * World-space spacing (px) of the background pattern, read from the resolved
+   * `--mr-pattern-gap` once the view exists, so a host's `--mr-pattern-size`
+   * switches levels at the right zoom.
+   */
+  private readonly backgroundPatternGapPx = signal(DEFAULT_PATTERN_GAP_PX);
 
-  protected readonly largeGridOpacity = computed(() => {
-    const scale = this.cameraState().scale;
-    // Increase grid line opacity (up to 0.16) and fade out slower
-    return Math.max(0.02, Math.min(0.16, 0.18 - (scale - 1.0) * 0.08));
-  });
+  /**
+   * On-screen spacing and fade of the fine and coarse background levels at the
+   * current zoom.
+   *
+   * VALUE: The fades multiply the base pattern opacity rather than replacing
+   * it, so host-tuned opacities still adapt instead of flooding the canvas.
+   */
+  protected readonly backgroundPatternLevels = computed(() =>
+    computeBackgroundPatternLevels(this.backgroundPatternGapPx(), this.cameraState().scale),
+  );
 
   /** Execution nodes to render. The host owns their lifecycle and status. */
   readonly nodes = input.required<MermaidRuntime.Node[]>();
@@ -638,10 +650,26 @@ export class GraphCanvasComponent implements AfterViewInit {
   /**
    * Viewport background treatment behind the rendered graph.
    *
-   * VALUE: Hosts can keep the existing zoom-aware grid/dot effect, switch to a
-   * simpler preset, remove it entirely, or use CSS variables for a custom layered background.
+   * VALUE: Dots by default; grid lines, both, none, or a host's own CSS
+   * background. Built-in patterns keep the same on-screen density at any zoom.
    */
-  readonly backgroundEffect = input<MermaidRuntime.GraphBackgroundEffect>("grid-dots");
+  readonly backgroundEffect = input<MermaidRuntime.GraphBackgroundEffect>("dots");
+
+  /**
+   * Which nodes draw their progress ring.
+   *
+   * VALUE: By default finished and 0% nodes draw none, so rings mark only
+   * work in progress; `always` restores the older draw-everything behaviour.
+   */
+  readonly progressRings = input<MermaidRuntime.ProgressRingVisibility>("active");
+
+  /**
+   * Whether a node also draws one fainter ring per running child node
+   * (`activeChildNodeProgresses`), outside its overall ring.
+   *
+   * VALUE: Hosts that find stacked rings busy can keep just the overall ring.
+   */
+  readonly childProgressRings = input<boolean>(true);
 
   /** Breadcrumb label for the root (top-level) graph. */
   readonly rootLabel = input<string>("Main");
@@ -903,14 +931,15 @@ export class GraphCanvasComponent implements AfterViewInit {
   );
 
   /** Joined node progress values — drives live progress-bar DOM updates. */
-  private readonly progressKey = computed(() =>
-    this.activeNodes()
+  private readonly progressKey = computed(() => {
+    const nodeKeys = this.activeNodes()
       .map((node) => {
         const childProgressesStr = node.activeChildNodeProgresses ? node.activeChildNodeProgresses.join("|") : "";
-        return `${node.id}:${node.progressPercent ?? ""}:${node.progressLabel ?? ""}:${childProgressesStr}`;
+        return `${node.id}:${node.status}:${node.progressPercent ?? ""}:${node.progressLabel ?? ""}:${childProgressesStr}`;
       })
-      .join(","),
-  );
+      .join(",");
+    return `${this.progressRings()}:${this.childProgressRings()}:${nodeKeys}`;
+  });
 
   /** Follow temporarily suspended after a manual pan/zoom. */
   protected readonly followPaused = signal(false);
@@ -1117,6 +1146,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     const viewport = this.viewportRef().nativeElement;
     resizeObserver.observe(viewport);
     this.destroyRef.onDestroy(() => resizeObserver.disconnect());
+    this.backgroundPatternGapPx.set(readCssPxProperty(viewport, "--mr-pattern-gap") ?? DEFAULT_PATTERN_GAP_PX);
     // Seed the size synchronously so the first render already knows the
     // viewport (the observer's first callback arrives a frame later, which would
     // otherwise force an immediate second render for viewport-aware layouts).
@@ -1356,9 +1386,15 @@ export class GraphCanvasComponent implements AfterViewInit {
     return nodes.flatMap((node) => (node.dependencies ?? []).map((dependency) => ({ from: dependency, to: node.id })));
   }
 
+  /**
+   * Builds the Mermaid `click` line that makes a node a link the canvas can intercept.
+   *
+   * No tooltip text is passed: Mermaid draws tooltips as a `<body>`-level div
+   * with a hard-coded light background, which is unreadable on dark hosts and
+   * only repeated the node title.
+   */
   private buildNodeClickLine(node: MermaidRuntime.Node, alias: string): string {
-    const tooltip = this.escapeMermaidString(`View ${node.title}`);
-    return `  click ${alias} "?${NODE_HREF_PARAM}=${encodeURIComponent(node.id)}" "${tooltip}"`;
+    return `  click ${alias} "?${NODE_HREF_PARAM}=${encodeURIComponent(node.id)}"`;
   }
 
   private escapeMermaidString(value: string): string {
@@ -2129,53 +2165,44 @@ export class GraphCanvasComponent implements AfterViewInit {
    * Creates, updates, or removes a node's progress trace: a `<path>` tracing
    * its shape (offset outward by {@link NODE_PROGRESS_TRACE_OFFSET_PX}),
    * revealed clockwise from its topmost point via `stroke-dasharray`/
-   * `stroke-dashoffset`, plus a small percentage `<text>` above it.
+   * `stroke-dashoffset`, one fainter ring per running child further out, and
+   * the overall percentage as a small badge on the node's bottom-right border.
+   *
+   * Callers pass only what should be drawn (see selectVisibleNodeProgress);
+   * a null `progressPercent` with no child rings removes everything.
    */
-  private applyProgressTraceOverlay(
-    nodeElement: Element,
-    progressPercent: number | null,
-    activeChildNodeProgresses?: number[] | null,
-  ): void {
+  private applyProgressTraceOverlay(nodeElement: Element, progressPercent: number | null, childPercents: readonly number[]): void {
     const existingPaths = Array.from(nodeElement.querySelectorAll<SVGPathElement>(`:scope > .${PROGRESS_TRACE_CLASS}`));
-    const existingText = nodeElement.querySelector<SVGTextElement>(`:scope > .${PROGRESS_TEXT_CLASS}`);
+    const existingBadge = nodeElement.querySelector<SVGGElement>(`:scope > .${PROGRESS_BADGE_CLASS}`);
 
-    const childProgresses = activeChildNodeProgresses
-      ? activeChildNodeProgresses
-          .map((p) => this.readNodeProgressPercent(p))
-          .filter((p): p is number => p !== null)
-      : null;
-
-    const hasProgress = progressPercent !== null || (childProgresses && childProgresses.length > 0);
+    const hasProgress = progressPercent !== null || childPercents.length > 0;
     const shapeEl = hasProgress ? this.findNodeShapeElement(nodeElement) : null;
 
     if (!hasProgress || !shapeEl) {
       existingPaths.forEach((p) => p.remove());
-      existingText?.remove();
+      existingBadge?.remove();
       return;
     }
 
     const transform = shapeEl.getAttribute("transform");
 
-    // Gather all progress configurations to render
-    const NODE_PROGRESS_STACK_OFFSET_PX = 4;
-    const allPercents: { percent: number; opacity: number; offset: number }[] = [];
+    // Gather all progress rings to render: the overall ring first, then one per running child.
+    const allPercents: { percent: number; isChild: boolean; offset: number }[] = [];
     if (progressPercent !== null) {
       allPercents.push({
         percent: progressPercent,
-        opacity: 1,
+        isChild: false,
         offset: NODE_PROGRESS_TRACE_OFFSET_PX,
       });
     }
 
-    if (childProgresses) {
-      childProgresses.forEach((percent) => {
-        allPercents.push({
-          percent,
-          opacity: 0.5,
-          offset: NODE_PROGRESS_TRACE_OFFSET_PX + allPercents.length * NODE_PROGRESS_STACK_OFFSET_PX,
-        });
+    childPercents.forEach((percent) => {
+      allPercents.push({
+        percent,
+        isChild: true,
+        offset: NODE_PROGRESS_TRACE_OFFSET_PX + allPercents.length * NODE_PROGRESS_STACK_OFFSET_PX,
       });
-    }
+    });
 
     // Ensure we have exactly allPercents.length path elements
     const paths: SVGPathElement[] = [];
@@ -2209,36 +2236,50 @@ export class GraphCanvasComponent implements AfterViewInit {
       const pathLength = computeOutlinePerimeterLength(geometry);
       path.style.strokeDasharray = `${pathLength}`;
       path.style.strokeDashoffset = `${pathLength * (1 - config.percent / 100)}`;
-      path.style.opacity = `${config.opacity}`;
+      path.classList.toggle(PROGRESS_TRACE_CHILD_CLASS, config.isChild);
     }
 
-    // Update text above the outermost path
-    const outermostConfig = allPercents[allPercents.length - 1];
-    const outermostGeometry = this.readOffsetGeometry(shapeEl, outermostConfig.offset);
-    if (outermostGeometry) {
-      const topPoint = outermostGeometry.kind === "rect"
-        ? { x: outermostGeometry.x + outermostGeometry.width / 2, y: outermostGeometry.y }
-        : outermostGeometry.points.reduce((top, point) => (point.y < top.y ? point : top));
-
-      let text = existingText;
-      if (!text) {
-        text = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-        text.classList.add(PROGRESS_TEXT_CLASS, NODE_DECORATION_CLASS);
-        text.setAttribute("text-anchor", "middle");
-        text.setAttribute("pointer-events", "none");
-        nodeElement.appendChild(text);
-      }
-      if (transform) text.setAttribute("transform", transform);
-      else text.removeAttribute("transform");
-      text.setAttribute("x", String(topPoint.x));
-      text.setAttribute("y", String(topPoint.y - PROGRESS_TEXT_GAP_PX));
-
-      // Show all percentages, e.g. "33% | 20% | 90%"
-      const nextText = allPercents.map((p) => `${p.percent}%`).join(" | ");
-      if (text.textContent !== nextText) text.textContent = nextText;
-    } else {
-      existingText?.remove();
+    // The overall percentage as a small badge on the node's bottom-right border.
+    // Per-child numbers stay in the inspector; the child rings show them visually.
+    const shapeGeometry = progressPercent !== null ? this.readOffsetGeometry(shapeEl, 0) : null;
+    if (!shapeGeometry) {
+      existingBadge?.remove();
+      return;
     }
+
+    const label = `${progressPercent}%`;
+    const box = computeProgressBadgeBox(shapeGeometry, label);
+    let badge = existingBadge;
+    if (!badge) {
+      badge = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
+      badge.classList.add(PROGRESS_BADGE_CLASS, NODE_DECORATION_CLASS);
+      badge.setAttribute("pointer-events", "none");
+      // The pill needs the decoration class itself: status/hover rules match any `.node rect` without it.
+      const pillElement = document.createElementNS(SVG_NAMESPACE, "rect");
+      pillElement.classList.add(NODE_DECORATION_CLASS);
+      badge.appendChild(pillElement);
+      const text = document.createElementNS(SVG_NAMESPACE, "text");
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "central");
+      badge.appendChild(text);
+    }
+    // Keep the badge above any ring added after it, so rings pass under it.
+    if (nodeElement.lastElementChild !== badge) nodeElement.appendChild(badge);
+
+    if (transform) badge.setAttribute("transform", transform);
+    else badge.removeAttribute("transform");
+
+    const pill = badge.querySelector("rect")!;
+    pill.setAttribute("x", String(box.x));
+    pill.setAttribute("y", String(box.y));
+    pill.setAttribute("width", String(box.width));
+    pill.setAttribute("height", String(box.height));
+    pill.setAttribute("rx", String(box.height / 2));
+
+    const text = badge.querySelector("text")!;
+    text.setAttribute("x", String(box.x + box.width / 2));
+    text.setAttribute("y", String(box.y + box.height / 2));
+    if (text.textContent !== label) text.textContent = label;
   }
 
   /**
@@ -2462,14 +2503,16 @@ export class GraphCanvasComponent implements AfterViewInit {
    * selected node stable while long-running work advances.
    */
   private applyNodeProgressBars(): void {
+    const visibility = this.progressRings();
+    const showChildRings = this.childProgressRings();
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       if (!element) continue;
-      this.applyProgressTraceOverlay(
-        element,
-        this.readNodeProgressPercent(node.progressPercent),
-        node.activeChildNodeProgresses,
-      );
+      const childPercents = (node.activeChildNodeProgresses ?? [])
+        .map((percent) => this.readNodeProgressPercent(percent))
+        .filter((percent): percent is number => percent !== null);
+      const visible = selectVisibleNodeProgress(node.status, this.readNodeProgressPercent(node.progressPercent), childPercents, visibility, showChildRings);
+      this.applyProgressTraceOverlay(element, visible.percent, visible.childPercents);
     }
   }
 

@@ -1,0 +1,16 @@
+---
+description: Mermaid Runtime — runbook/plans workflow, library rules, git safety; read before coding
+alwaysApply: true
+---
+
+# Mermaid Runtime — agent standards
+
+**Canonical copy:** [`AGENTS.md`](../../AGENTS.md). Cursor reads it directly; this rule makes sure it's applied every time. Don't copy its content here.
+
+Before editing:
+
+1. Read [`AGENTS.md`](../../AGENTS.md) and the session ledger in [`docs/runbook/00_index.md`](../../docs/runbook/00_index.md).
+2. Read [`docs/agent-standards.md`](../../docs/agent-standards.md) (naming, JSDoc, terms) and [`docs/angular-standards.md`](../../docs/angular-standards.md).
+3. Record findings in the runbook and update plan status as `AGENTS.md` describes. Add a ledger row before finishing.
+
+Never stash, reset, restore, clean or force-push: other agents share this working tree.

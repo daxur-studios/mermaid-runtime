@@ -14,7 +14,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:update": "playwright test --update-snapshots",
-    "test:regression": "npm run test:unit && npm run test:e2e"
+    "test:regression": "npm run test:unit && npm run test:e2e",
+    "sync:agent-instructions": "node scripts/sync-agent-instructions.mjs",
+    "check:agent-instructions": "node scripts/sync-agent-instructions.mjs --check"
   },
   "private": true,
   "dependencies": {

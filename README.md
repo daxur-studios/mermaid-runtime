@@ -9,6 +9,11 @@ discussions. The linked [plans](docs/plans/00_index.md) describe proposed work o
 interactive E2E nodes, observed activity, and feature-scoped system views.
 Draft plans are not implemented capabilities.
 
+Coding agents (Claude Code, Codex, Copilot, Cursor, Antigravity) follow [`AGENTS.md`](AGENTS.md),
+which links the [agent](docs/agent-standards.md) and [Angular](docs/angular-standards.md) standards.
+Edit `AGENTS.md` or `.claude/agents/*.md` only, then run `npm run sync:agent-instructions`;
+CI fails if the generated copies are stale.
+
 Run `npm run demo` to try the synthetic [Work E2E](http://localhost:4200/work-e2e)
 and [Large-flow lab](http://localhost:4200/large-flow) pages. Compare grouped steps,
 compact subflows, right-click details, and live updates with 24–240 steps.
@@ -207,7 +212,7 @@ Content-agnostic pan/zoom camera. Not Mermaid-specific — use it to wrap any SV
 | Breadcrumb | `breadcrumbPlacement` | `<mr-graph-breadcrumb [breadcrumbs]="canvas.breadcrumb()" (depthSelected)="...">` | canvas's `breadcrumb()` signal |
 | Inspector | `inspectorPlacement` | `<mr-graph-inspector>` | project into `[detail]` yourself instead of relying on `<mr-task-graph>`'s slot |
 
-`[direction]` (`'TD' | 'LR'`, two-way via `model()`) sets flow direction; `[backgroundEffect]` (`'grid-dots' | 'grid' | 'dots' | 'none' | 'custom'`) controls the viewport background; `[mermaidConfig]` lets advanced hosts override the whole Mermaid render config instead of just `[mermaidTheme]`.
+`[direction]` (`'TD' | 'LR'`, two-way via `model()`) sets flow direction; `[backgroundEffect]` (`'dots'` default, `'grid' | 'grid-dots' | 'none' | 'custom'`) controls the viewport background. Built-in patterns adapt to zoom: dot or line spacing never drops below 12 px on screen (zoomed out, it switches to every 4th point, with every 4th point slightly brighter), so the canvas never floods. Style it with `--mr-pattern-ink`, `--mr-pattern-opacity`, `--mr-pattern-size` (world px, default 24), `--mr-pattern-dot-radius` and `--mr-pattern-line-width` on `mr-task-graph`; the older `--app-*graph-grid-*` tokens still apply when those are unset; `[mermaidConfig]` lets advanced hosts override the whole Mermaid render config instead of just `[mermaidTheme]`.
 
 ### `TaskGraphReplayComponent` — execution timeline playback
 
@@ -279,7 +284,9 @@ These paint automatically from data you already pass — no extra inputs — but
 
 - **Selected ring** — around whichever node `[selectedNodeId]` (or a user click) points to.
 - **Current ring** — a separate ring around `[currentNodeId]`, the live execution focus. Both rings use the same offset today, so a node that's simultaneously selected *and* current shows overlapping rather than nested rings.
-- **Progress trace** — draws along the node's border as `progressPercent` rises. Coloured `--app-color-pass` (green) by default, `--app-color-fail` (red) once the node's `status` is `'failed'`.
+- **Progress trace** — draws along the node's border as `progressPercent` rises, with a small `NN%` badge on the node's bottom-right border. Coloured `--app-color-pass` (green) by default, `--app-color-fail` (red) for a `'failed'` node. Each entry of `activeChildNodeProgresses` (e.g. the running steps inside a subflow) adds a fainter ring further out.
+  - By default rings show only on nodes that haven't finished (not `complete`, `failed` or `skipped`) and are above 0%. `[progressRings]="'always'"` draws every node with a progress value; `[childProgressRings]="false"` keeps only the overall ring.
+  - Tokens: `--mr-progress-child-ring-opacity`, `--mr-progress-badge-fill`, `--mr-progress-badge-stroke`, `--mr-progress-badge-text`, `--mr-progress-badge-font-size`.
 - **Subgraph corner badge** — a drillable node (resolved subgraph) gets a solid accent border plus a small "+" badge in its top-right corner, instead of a dashed outline.
 
 ## Subgraph drill-down
