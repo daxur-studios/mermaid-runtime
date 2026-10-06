@@ -65,6 +65,21 @@ describe('routeGroupCrossing', () => {
     expect(turned[turned.length - 2].y).toBeGreaterThan(760);
   });
 
+  it('does not squeeze the lane into a sliver of shared margin', () => {
+    // Left edges only 2px apart past the narrower border: a shared lane would hug the step.
+    const upper: RouteGroup = { box: box(65, 0, 735, 140), contentBox: box(98, 40, 640, 60) };
+    const lower: RouteGroup = { box: box(33, 190, 800, 140), contentBox: box(67, 230, 720, 60) };
+    const from = endpoint(box(98, 40, 120, 60), upper);
+    const to = endpoint(box(67, 230, 120, 60), lower);
+    const route = routeGroupCrossing('TD', from, to)!;
+    expect(route[0]).toEqual({ x: 98, y: 70 });
+    expect(route[route.length - 1]).toEqual({ x: 67, y: 260 });
+    // the last run is long enough to read as an elbow, not a notch
+    expect(67 - route[route.length - 2].x).toBeGreaterThanOrEqual(12);
+    const turned = routeGroupCrossing('LR', transposeFor(from), transposeFor(to))!;
+    expect(67 - turned[turned.length - 2].y).toBeGreaterThanOrEqual(12);
+  });
+
   it('shares one lane between arrows from the same group (fan-out)', () => {
     const second = endpoint(box(640, 300 - 30, 120, 30), PHASE_TWO);
     const a = routeGroupCrossing('TD', lastOfPhaseOne, firstOfPhaseTwoRight)!;

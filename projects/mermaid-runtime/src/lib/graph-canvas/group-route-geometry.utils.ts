@@ -44,6 +44,17 @@ const CENTRE_TOLERANCE_RATIO = 0.15;
  */
 export const ROUTE_CORNER_RADIUS_PX = 8;
 
+/**
+ * Least room (px) a shared lane needs between the steps and the border it sits
+ * inside, as a multiple of the corner radius.
+ *
+ * VALUE: Groups of different widths can leave only a sliver of margin in
+ * common; a lane squeezed into it hugs the step, so the arrow turns and
+ * enters in a few pixels and reads as a shortcut. Below this room each end
+ * uses its own lane, which keeps the elbow as long as the others.
+ */
+const MIN_SHARED_LANE_ROOM_PX = ROUTE_CORNER_RADIUS_PX * 3;
+
 /** Distance (px) under which two route points count as the same point. */
 const ROUTE_POINT_EPSILON_PX = 0.01;
 
@@ -166,14 +177,14 @@ function readLaneX(group: RouteGroup, side: 'left' | 'right'): number {
 
 /**
  * X of a lane on `side` that is past the steps of both groups and still inside
- * both borders, or `null` if there is none (for example, groups of different
- * widths whose margins do not overlap).
+ * both borders with room to spare, or `null` if there is none (for example,
+ * groups of different widths whose margins barely or do not overlap).
  */
 function readSharedLaneX(a: RouteGroup, b: RouteGroup, side: 'left' | 'right'): number | null {
   const clear = side === 'right' ? Math.max(a.contentBox.right, b.contentBox.right) : Math.min(a.contentBox.left, b.contentBox.left);
   const border = side === 'right' ? Math.min(a.box.right, b.box.right) : Math.max(a.box.left, b.box.left);
   const room = side === 'right' ? border - clear : clear - border;
-  return room > ROUTE_POINT_EPSILON_PX ? (clear + border) / 2 : null;
+  return room >= MIN_SHARED_LANE_ROOM_PX ? (clear + border) / 2 : null;
 }
 
 function edgeX(node: Box, side: 'left' | 'right'): number {

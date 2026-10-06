@@ -157,3 +157,11 @@ Not covered (also in the README): an arrow that skips a phase runs down its sour
 - **Cause (code-verified):** `readSharedLaneX` picked the middle of "the outermost step edge" and "the nearest border". When the wider group's steps reach past the narrower group's border, that interval is inverted, so the lane landed inside the wide group's step and the last run entered the step from inside.
 - **Fix:** a shared lane is used only when it is past the steps of both groups and inside both borders. Otherwise each end uses its own margin lane and the arrow runs along the gap, so it enters the step from outside. Unit spec added for narrow-above-wide in both flow directions; unit 54/54, e2e 15/15.
 - **Gap in tests:** the lab's phases are all the same width, so e2e could not hit this. The unit spec covers it.
+
+## Fix: shared lane squeezed against a step (2026-10-06)
+
+- **User-reported:** in the LR snake one hand-off arrow looked like a shortcut between two steps; the others were fine. Screenshot: "Assert seed ready" to "Subscribe trip topic", groups of different widths.
+- **Code-verified cause:** the groups' left margins overlapped by only 2px, so the shared lane sat 1px from the target step. The arrow turned and entered within a few pixels.
+- **Change:** a shared lane is used only when it has at least `MIN_SHARED_LANE_ROOM_PX` (3 corner radii, 24px) between the steps and the border. Below that each end uses its own margin lane, as in the other arrows.
+- **Validation:** unit 55/55 (new spec for a 2px sliver, in TD and LR); e2e re-run. Not committed (the user stages and commits from here).
+
