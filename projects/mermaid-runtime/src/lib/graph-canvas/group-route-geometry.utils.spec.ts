@@ -151,3 +151,29 @@ describe('pickRouteLabelPoint', () => {
     expect(pickRouteLabelPoint([{ x: 0, y: 0 }, { x: 0, y: 10 }, { x: 100, y: 10 }])).toEqual({ x: 50, y: 10 });
   });
 });
+
+describe('routeGroupCrossing with slanted steps', () => {
+  const lean = { left: 15, right: 15, top: 0, bottom: 0 };
+
+  it('ends on the slanted side, not on the bounding box', () => {
+    const slantedLast = endpoint({ ...box(640, 40, 120, 60), inset: lean }, PHASE_ONE);
+    const slantedTarget = endpoint({ ...box(640, 230, 120, 60), inset: lean }, PHASE_TWO);
+    const route = routeGroupCrossing('TD', slantedLast, slantedTarget)!;
+    expect(route[0]).toEqual({ x: 745, y: 70 });
+    expect(route[route.length - 1]).toEqual({ x: 745, y: 260 });
+  });
+
+  it('applies a top or bottom inset on the face an arrow leaves by', () => {
+    const source = endpoint({ ...box(340, 40, 120, 60), inset: { left: 0, right: 0, top: 0, bottom: 10 } }, null);
+    const target = endpoint(box(340, 230, 120, 60), null);
+    const route = routeGroupCrossing('TD', source, target)!;
+    expect(route[0]).toEqual({ x: 400, y: 90 });
+  });
+
+  it('turns the side insets of a left-to-right flow into top and bottom insets', () => {
+    const source = endpoint({ ...box(40, 40, 60, 120), inset: { left: 0, right: 0, top: 15, bottom: 15 } }, null);
+    const target = endpoint(box(300, 40, 60, 120), null);
+    const route = routeGroupCrossing('LR', source, target)!;
+    expect(route[0].y).toBe(100);
+  });
+});

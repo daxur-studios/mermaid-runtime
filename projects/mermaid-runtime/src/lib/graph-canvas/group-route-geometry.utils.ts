@@ -1,4 +1,5 @@
 import type { GraphFlowDirection } from './group-arrangement.utils';
+import type { CentreInsets } from './shape-offset.utils';
 
 /** A point in scene pixels. */
 export interface Point {
@@ -12,6 +13,8 @@ export interface Box {
   readonly top: number;
   readonly right: number;
   readonly bottom: number;
+  /** For a step with slanted sides: how far its outline sits inside this box at the centre of each side (see {@link CentreInsets}). */
+  readonly inset?: CentreInsets;
 }
 
 /** A group's border box and the box around its member steps. */
@@ -122,8 +125,8 @@ function routeTopDown(source: RouteEndpoint, target: RouteEndpoint): Point[] | n
   else return null;
 
   const gapY = forward ? (sourceFrame.bottom + targetFrame.top) / 2 : (sourceFrame.top + targetFrame.bottom) / 2;
-  const sourceFaceY = forward ? source.node.bottom : source.node.top;
-  const targetFaceY = forward ? target.node.top : target.node.bottom;
+  const sourceFaceY = forward ? source.node.bottom - (source.node.inset?.bottom ?? 0) : source.node.top + (source.node.inset?.top ?? 0);
+  const targetFaceY = forward ? target.node.top + (target.node.inset?.top ?? 0) : target.node.bottom - (target.node.inset?.bottom ?? 0);
   const sourceSide = readSide(source);
   const targetSide = readSide(target);
   const sourceY = centreY(source.node);
@@ -188,7 +191,7 @@ function readSharedLaneX(a: RouteGroup, b: RouteGroup, side: 'left' | 'right'): 
 }
 
 function edgeX(node: Box, side: 'left' | 'right'): number {
-  return side === 'right' ? node.right : node.left;
+  return side === 'right' ? node.right - (node.inset?.right ?? 0) : node.left + (node.inset?.left ?? 0);
 }
 
 /** Drops repeated points and middle points of straight runs. */
@@ -209,7 +212,8 @@ function transposePoint(point: Point): Point {
 }
 
 function transposeBox(box: Box): Box {
-  return { left: box.top, top: box.left, right: box.bottom, bottom: box.right };
+  const inset = box.inset ? { left: box.inset.top, top: box.inset.left, right: box.inset.bottom, bottom: box.inset.right } : undefined;
+  return { left: box.top, top: box.left, right: box.bottom, bottom: box.right, ...(inset ? { inset } : {}) };
 }
 
 function transposeEndpoint(endpoint: RouteEndpoint): RouteEndpoint {

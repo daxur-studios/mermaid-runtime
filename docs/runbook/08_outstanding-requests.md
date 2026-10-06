@@ -115,3 +115,25 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 **Validation:** unit 58/58, e2e 17/17 (1 new: command text with quotes, `<public_guid>` and `{{depotId}}` shows as typed). Library build OK. Not committed.
 
 **Not done:** highlighting `{{param}}` placeholders, a separate CLI-name prefix or chip (part of the kind-registry slice), shapes, line clamping.
+
+### `{{placeholder}}` highlight (2026-10-06)
+
+`{{name}}` inside a subtitle is wrapped in `.mr-node-param` and drawn bold amber (`--mr-node-param-color` overrides it). The subtitle is dimmed with `color-mix` rather than opacity so the placeholder stays vivid. The status rules that force label text to the surface colour (`.node.done span` and the like, plus hover) now skip `.mr-node-subtitle` and `.mr-node-param`. e2e covers one highlighted placeholder per node. Not committed.
+
+### Node shapes: what exists today (2026-10-06, code-verified)
+
+- Exposed: `NodeDecoration.shape` is `'diamond'` or `'subroutine'`; everything else is a rectangle.
+- Mermaid 11.16 draws many more through `@{ shape: … }` (rounded, stadium, hex, cyl, lean-r, …). Raw Mermaid output with the library's label CSS was measured: footprints for a long title plus command are rect 260×95, rounded 230×95, stadium 235×80, hexagon 255×80, diamond 295×295, cylinder 215×127, parallelogram 295×80, subroutine 231×80.
+- The selected/current ring, outline and progress trace read the shape back from the SVG (`shape-offset.utils.ts`): exact for rect, rounded rect and diamond; other polygons (hexagon, parallelogram, subroutine) get a bounding-box ring; path-drawn shapes (stadium, cylinder) get none. Elbow arrows use each step's bounding box, so a slanted side leaves a visible gap.
+
+### Rounded, hexagon and parallelogram shapes (2026-10-06)
+
+**Change:** `NodeDecoration.shape` also accepts `'rounded'`, `'hexagon'` and `'parallelogram'` (written with Mermaid's classic `( )`, `{{ }}` and `[/ /]` syntax, so label escaping is unchanged). The Large-flow lab has a **Shapes by step type** checkbox (assert → hexagon, SQL → rounded, Kafka → parallelogram).
+
+**Fixed for them:**
+- The selected/current ring and progress trace now offset any convex polygon exactly (`tryOffsetConvexPolygon`), so a hexagon or parallelogram gets a ring that follows its outline instead of a box around it. Non-convex shapes (subroutine) still use the box.
+- Elbow arrows drawn between phases used to end on the step's bounding box, leaving a gap at a parallelogram's slanted side. Step boxes now carry `inset` (how far the outline sits inside the box at the middle of each side, `readPolygonCentreInsets`), and the router ends arrows on the real edge. It is 0 for rect, diamond and hexagon, so nothing else moved.
+
+**Validation:** unit 68/68 (10 new), e2e 18/18 (1 new, `e2e/node-shapes.spec.ts`), library build OK, checked in the lab. Not committed.
+
+**Not done:** stadium and cylinder (path-drawn: need ring, status colour and progress support), the kind registry (shape = intent, chip = tool), group tones. Arrows Mermaid routes itself inside a group already meet the slanted edge.

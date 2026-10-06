@@ -68,6 +68,9 @@ export function offsetPolygonGeometry(points: readonly ShapePoint[], offsetPx: n
     return { kind: "polygon", points: offsetPoints };
   }
 
+  const convex = tryOffsetConvexPolygon(points, offsetPx);
+  if (convex) return { kind: "polygon", points: convex };
+
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
   const minX = Math.min(...xs);
@@ -75,6 +78,113 @@ export function offsetPolygonGeometry(points: readonly ShapePoint[], offsetPx: n
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
   return offsetRectGeometry(minX, minY, maxX - minX, maxY - minY, 0, offsetPx);
+}
+
+/** Distance (px) under which two polygon vertices count as the same vertex. */
+const POLYGON_VERTEX_EPSILON_PX = 0.01;
+
+/** Cross product (px²) under which two edges count as parallel. */
+const PARALLEL_EDGE_EPSILON = 1e-6;
+
+/**
+ * Offsets a convex polygon outward by `offsetPx`, moving every edge along its
+ * outward normal and joining the moved edges at their intersections.
+ *
+ * PURPOSE: Hexagon and parallelogram nodes should get a ring that follows their
+ * outline, not a rectangle around their bounding box.
+ *
+ * VALUE: Exact for any convex polygon (the rhombus formula above is the
+ * four-point case). Returns `null` for a polygon that is not convex, has fewer
+ * than three distinct vertices, or has parallel neighbouring edges after
+ * dropping straight-through vertices, so the caller can fall back to a box.
+ */
+function tryOffsetConvexPolygon(points: readonly ShapePoint[], offsetPx: number): ShapePoint[] | null {
+  const distinct = points.filter((point, i) => i === 0 || Math.hypot(point.x - points[i - 1].x, point.y - points[i - 1].y) > POLYGON_VERTEX_EPSILON_PX);
+  if (distinct.length > 1 && Math.hypot(distinct[0].x - distinct[distinct.length - 1].x, distinct[0].y - distinct[distinct.length - 1].y) <= POLYGON_VERTEX_EPSILON_PX) distinct.pop();
+  const count = distinct.length;
+  if (count < 3) return null;
+
+  let signedArea = 0;
+  for (let i = 0; i < count; i++) {
+    const a = distinct[i];
+    const b = distinct[(i + 1) % count];
+    signedArea += a.x * b.y - b.x * a.y;
+  }
+  if (signedArea === 0) return null;
+  const orientation = Math.sign(signedArea);
+
+  for (let i = 0; i < count; i++) {
+    const a = distinct[i];
+    const b = distinct[(i + 1) % count];
+    const c = distinct[(i + 2) % count];
+    const turn = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(turn) <= PARALLEL_EDGE_EPSILON) return null;
+    if (Math.sign(turn) !== orientation) return null;
+  }
+
+  // Each edge's line, moved outward: point `origin` plus direction `dir`.
+  const lines = distinct.map((a, i) => {
+    const b = distinct[(i + 1) % count];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const dir = { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+    const outward = { x: dir.y * orientation, y: -dir.x * orientation };
+    return { origin: { x: a.x + outward.x * offsetPx, y: a.y + outward.y * offsetPx }, dir };
+  });
+  const result: ShapePoint[] = [];
+  for (let i = 0; i < count; i++) {
+    const previous = lines[(i + count - 1) % count];
+    const next = lines[i];
+    const denominator = previous.dir.x * next.dir.y - previous.dir.y * next.dir.x;
+    const along = ((next.origin.x - previous.origin.x) * next.dir.y - (next.origin.y - previous.origin.y) * next.dir.x) / denominator;
+    result.push({ x: previous.origin.x + previous.dir.x * along, y: previous.origin.y + previous.dir.y * along });
+  }
+  return result;
+}
+
+/**
+ * How far a node's real outline sits inside its bounding box where an arrow
+ * meets it: on each side, along the line through the outline's centre.
+ *
+ * PURPOSE: A slanted side (parallelogram) leaves its bounding box edge empty
+ * at mid-height, so an arrow ending on the box stops short of the shape.
+ *
+ * VALUE: Insets are 0 for rectangles, diamonds and hexagons, whose outline
+ * touches the box at the centre of each side, so only slanted shapes change.
+ */
+export interface CentreInsets {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/** Insets of `points` (a closed polygon) from its own bounding box, measured through the bounding box's centre. */
+export function readPolygonCentreInsets(points: readonly ShapePoint[]): CentreInsets | null {
+  if (points.length < 3) return null;
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const centreX = (minX + maxX) / 2;
+  const centreY = (minY + maxY) / 2;
+
+  const hitsAtY: number[] = [];
+  const hitsAtX: number[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    if (a.y !== b.y && Math.min(a.y, b.y) <= centreY && centreY <= Math.max(a.y, b.y)) hitsAtY.push(a.x + ((centreY - a.y) / (b.y - a.y)) * (b.x - a.x));
+    if (a.x !== b.x && Math.min(a.x, b.x) <= centreX && centreX <= Math.max(a.x, b.x)) hitsAtX.push(a.y + ((centreX - a.x) / (b.x - a.x)) * (b.y - a.y));
+  }
+  if (hitsAtY.length === 0 || hitsAtX.length === 0) return null;
+  return {
+    left: Math.min(...hitsAtY) - minX,
+    right: maxX - Math.max(...hitsAtY),
+    top: Math.min(...hitsAtX) - minY,
+    bottom: maxY - Math.max(...hitsAtX),
+  };
 }
 
 /** Tolerance (px) for treating a vertex as lying exactly on a rhombus's horizontal or vertical axis through its centre. */

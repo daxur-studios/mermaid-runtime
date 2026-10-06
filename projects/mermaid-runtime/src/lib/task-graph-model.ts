@@ -117,8 +117,13 @@ export namespace MermaidRuntime {
      * 'subroutine' renders Mermaid's double-bracket "predefined process" shape —
      * the idiomatic fit for a node that calls out to another task/execution
      * rather than doing its own work.
+     *
+     * 'rounded', 'hexagon' and 'parallelogram' are for telling kinds of step
+     * apart at a glance (e.g. a call vs an assertion vs a data step). They size
+     * to the label like any other shape; the slanted ones lose a little text
+     * width to their sides.
      */
-    shape?: 'rect' | 'diamond' | 'subroutine';
+    shape?: 'rect' | 'rounded' | 'diamond' | 'subroutine' | 'hexagon' | 'parallelogram';
     /**
      * A small corner dot the host can use for any per-node live cue (e.g. "this
      * node has an LLM call in flight") without the library knowing what the cue

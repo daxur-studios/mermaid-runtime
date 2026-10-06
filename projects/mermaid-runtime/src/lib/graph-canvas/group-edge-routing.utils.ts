@@ -1,4 +1,5 @@
 import type { GraphFlowDirection } from './group-arrangement.utils';
+import { readPolygonCentreInsets } from './shape-offset.utils';
 import { buildRoundedRoutePath, pickRouteLabelPoint, routeGroupCrossing, type Box, type Point, type RouteGroup } from './group-route-geometry.utils';
 
 /**
@@ -40,7 +41,7 @@ export function routeGroupCrossings(container: Element, plan: GroupCrossingPlan)
 
   const nodeBoxes = new Map<string, Box | null>();
   const readNodeBox = (alias: string): Box | null => {
-    if (!nodeBoxes.has(alias)) nodeBoxes.set(alias, measure(svg.querySelector<SVGGraphicsElement>(`g.node[id*="flowchart-${alias}-"]`)));
+    if (!nodeBoxes.has(alias)) nodeBoxes.set(alias, measureNode(svg.querySelector<SVGGraphicsElement>(`g.node[id*="flowchart-${alias}-"]`)));
     return nodeBoxes.get(alias) ?? null;
   };
 
@@ -114,6 +115,21 @@ function measure(element: SVGGraphicsElement | null): Box | null {
   const first = corner(local.x, local.y);
   const second = corner(local.x + local.width, local.y + local.height);
   return { left: Math.min(first.x, second.x), top: Math.min(first.y, second.y), right: Math.max(first.x, second.x), bottom: Math.max(first.y, second.y) };
+}
+
+/**
+ * Box of a step node, plus how far its outline sits inside that box where an
+ * arrow meets it (non-zero only for slanted shapes such as a parallelogram).
+ */
+function measureNode(node: SVGGraphicsElement | null): Box | null {
+  const box = measure(node);
+  const shape = node?.querySelector<SVGGraphicsElement>('.label-container');
+  const matrix = shape?.getCTM();
+  if (!box || !(shape instanceof SVGPolygonElement) || !matrix) return box;
+  const scenePoints = Array.from(shape.points).map((point) => ({ x: matrix.a * point.x + matrix.c * point.y + matrix.e, y: matrix.b * point.x + matrix.d * point.y + matrix.f }));
+  const inset = readPolygonCentreInsets(scenePoints);
+  if (!inset || (inset.left <= 0.5 && inset.right <= 0.5 && inset.top <= 0.5 && inset.bottom <= 0.5)) return box;
+  return { ...box, inset: { left: Math.max(0, inset.left), right: Math.max(0, inset.right), top: Math.max(0, inset.top), bottom: Math.max(0, inset.bottom) } };
 }
 
 function unionOf(boxes: readonly Box[]): Box {

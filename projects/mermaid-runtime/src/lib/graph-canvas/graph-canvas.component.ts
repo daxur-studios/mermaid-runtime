@@ -1373,6 +1373,12 @@ export class GraphCanvasComponent implements AfterViewInit {
         return `  ${alias}{"${label}"}`;
       case "subroutine":
         return `  ${alias}[["${label}"]]`;
+      case "rounded":
+        return `  ${alias}("${label}")`;
+      case "hexagon":
+        return `  ${alias}{{"${label}"}}`;
+      case "parallelogram":
+        return `  ${alias}[/"${label}"/]`;
       default:
         return `  ${alias}["${label}"]`;
     }
