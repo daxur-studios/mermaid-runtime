@@ -293,17 +293,31 @@ belongs to at most one group (first group listed wins if `nodeIds` overlap).
 outer flowchart direction — this is what actually compacts a long chain (e.g.
 an overall `TD` flow with each group flowing `LR` internally turns one long
 column into a stack of short rows), not just a colour/border overlay. Omit
-`direction` to inherit the outer flow. For a nested subgraph level, set
-`groups` directly on that level's `MermaidRuntime.Graph` object instead of the
-component input.
+`direction` and the viewer picks one (see below). For a nested subgraph level,
+set `groups` directly on that level's `MermaidRuntime.Graph` object instead of
+the component input.
 
-**Caveat — only set `direction` on a self-contained group** (no edges to/from
-nodes outside it). Mermaid/dagre's edge routing across a cluster boundary is
-unreliable once that cluster's direction differs from its parent's: the edge
-can visually clip to the cluster border instead of reaching the actual node.
-If the group's nodes connect to the rest of the graph (the common case, e.g. a
-chain split into groups), omit `direction` — the group still renders as a
-labelled box, just without the extra compaction.
+**Chains of connected groups** (a long process split into phases): with
+`groupArrangement` left at `'auto'`, the steps inside each group run *across*
+the flow, so a `TD` chain becomes a stack of short rows and an `LR` chain a row
+of short columns. `[groupFlow]` (on both components) picks which way each group
+runs relative to the one before it: `'alternate'` (default, a snake: the last
+steps of one group sit next to the first steps of the next, so the hand-off
+arrow is short and straight) or `'same'` (every row reads the same way; the
+arrow sweeps back to the start of the next group). Mermaid draws an arrow between
+two such groups from group border to group border, so the canvas redraws those
+arrows from the step they leave to the step they enter (parallel steps use a lane
+in the group's margin; fan-out and fan-in share it; labels move with the arrow;
+redrawn paths carry `data-mr-routed="true"`). Arrows between groups that sit side
+by side are left as Mermaid drew them, and an arrow that skips a phase does not
+avoid the groups in between. `groupArrangement="mermaid"` turns the compaction
+and the redraw off.
+
+Group titles are drawn above the arrows on a pill. Style it with
+`--mr-group-label-fill`, `--mr-group-label-fill-opacity`,
+`--mr-group-label-stroke` and `--mr-group-label-radius`. In the SVG the title
+sits in `g.mr-group-labels` with `data-mr-group-label-for="<cluster id>"`, not
+inside `g.cluster`.
 
 **Packing independent groups** — `[groupArrangement]` (on both components)
 controls where groups with no edges to the rest of the graph sit relative to
@@ -315,7 +329,8 @@ each other (e.g. parallel trips or subflows):
 - `{ groupsPerLine: 3 }`: fixed wrap, for a specific look.
 - `'mermaid'`: Mermaid's own placement (one long strip of groups).
 
-Connected groups and groups with an explicit `direction` are left alone.
+Groups with an explicit `direction` are left alone. Connected groups are not
+wrapped, only compacted as described above.
 
 ## Common mistakes
 

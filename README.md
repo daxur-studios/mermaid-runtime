@@ -167,7 +167,7 @@ const groups: MermaidRuntime.NodeGroup[] = [
 A node belongs to at most one group. `direction` sets the group's *internal*
 layout direction independently of the outer flowchart direction — e.g. an
 overall `TD` flow where each group flows `LR` internally turns one long column
-into a compact stack of short rows. Omit `direction` to inherit the outer flow.
+into a compact stack of short rows. Omit `direction` and the viewer picks one for you (see the two sections below).
 `groups` works on `<mr-graph-canvas>` too, and on any nested `subgraph`'s own
 `Graph.groups` for drill-down levels.
 
@@ -193,16 +193,42 @@ side-by-side columns; in `LR`, stacked rows.
 ```
 
 `auto` re-evaluates only when the viewport's aspect ratio changes by more than
-30%, so ordinary resizes never re-layout the graph. Groups connected to the rest
-of the graph are left as-is, and a group's own `direction` always wins.
+30%, so ordinary resizes never re-layout the graph. A group's own `direction`
+always wins.
 
-> **Caveat:** only set `direction` on a group whose members have no edges
-> to/from nodes outside the group. Mermaid/dagre's routing for edges crossing
-> a cluster boundary is unreliable once that cluster's direction differs from
-> its parent's — the edge can visually clip to the cluster's border instead of
-> the actual node. If a group's chain connects to the rest of the graph
-> (the common case), omit `direction`; the group still renders as a labelled
-> box, just without the extra layout compaction.
+#### Chains of connected groups
+
+Groups wired into each other (a long process split into phases, each phase's last
+step feeding the next) are compacted too: unless you set `direction`, the steps
+inside each group run *across* the flow. In `TD`, the phases become a stack of
+short rows; in `LR`, a row of short columns, instead of one long strip.
+`groupArrangement="mermaid"` turns this off along with the packing above.
+
+`groupFlow` picks which way each group runs relative to the one before it:
+
+```html
+<mr-task-graph [groups]="groups" groupFlow="alternate" />  <!-- default: a snake -->
+<mr-task-graph [groups]="groups" groupFlow="same" />       <!-- every row reads left to right -->
+```
+
+- `'alternate'` — each group runs the opposite way to the one before it (`LR`,
+  `RL`, `LR`, … in `TD`; `TB`, `BT`, … in `LR`). The last steps of one group sit
+  next to the first steps of the next, so the arrow between them is short and
+  straight. Groups at the same position in the chain run the same way.
+- `'same'` — every group runs the same way, so every row reads the same way. The
+  arrow between groups drops into the gap and sweeps back to the start of the next.
+
+Mermaid draws an arrow between two such groups from group border to group border
+(and can loop it at the border), so the canvas redraws those arrows from the step
+they leave to the step they enter. Steps on one side of their group use a lane in
+that side's margin, so parallel steps are never crossed, and arrows between the
+same two groups share the lane: one step feeding several, or several feeding one,
+read as a single line that branches. Redrawn arrows keep their classes, status
+colours and labels (a label moves to the middle of the arrow's longest run) and
+are marked `data-mr-routed="true"`. An arrow between groups that sit side by side
+(not one after the other along the flow) is left as Mermaid drew it, and an arrow
+that skips over a phase runs down its source's lane without avoiding the groups
+in between.
 
 ### `GraphCameraComponent` — generic pan/zoom wrapper
 

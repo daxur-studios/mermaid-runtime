@@ -15,7 +15,8 @@ import { LayoutStabilityTracker } from "./layout-stability";
 import { computeBackgroundPatternLevels, DEFAULT_PATTERN_GAP_PX } from "./background-pattern.utils";
 import { raiseGroupLabels } from "./group-label.utils";
 import { computeProgressBadgeBox, selectVisibleNodeProgress } from "./node-progress.utils";
-import { buildGroupWrapLinks, chooseGroupsPerLine, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
+import { buildGroupWrapLinks, chooseGroupsPerLine, computeGroupChainLevels, connectedGroupDirection, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
+import { routeGroupCrossings, type GroupCrossingPlan } from "./group-edge-routing.utils";
 import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
 
 export type GraphRenderPhase =
@@ -600,6 +601,15 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   readonly groupArrangement = input<MermaidRuntime.GroupArrangement>("auto");
 
+  /**
+   * Which way the steps inside each group of a chain run, from one group to the
+   * next (see {@link MermaidRuntime.GroupFlow}).
+   *
+   * VALUE: `'alternate'` (default) makes a chain of groups a snake with short
+   * straight hand-offs; `'same'` keeps every row reading the same way.
+   */
+  readonly groupFlow = input<MermaidRuntime.GroupFlow>("alternate");
+
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
 
@@ -837,6 +847,9 @@ export class GraphCanvasComponent implements AfterViewInit {
     (this.activeGroups() ?? []).forEach((group, index) => map.set(group.id, `tgGrp${index}`));
     return map;
   });
+
+  /** Position of each active group along its chain of groups (see `computeGroupChainLevels`). */
+  private readonly groupChainLevels = computed<Map<string, number>>(() => computeGroupChainLevels(this.activeGroups() ?? [], this.resolveEdges()));
 
   /**
    * Viewport size the automatic group arrangement was last chosen for.
@@ -1233,7 +1246,7 @@ export class GraphCanvasComponent implements AfterViewInit {
 
       const groupAlias = groupAliasFor.get(group.id) ?? group.id;
       groupBlocks.push(`  subgraph ${groupAlias}["${this.escapeMermaidString(group.label)}"]`);
-      const direction = group.direction ?? this.readArrangedGroupDirection(group.id);
+      const direction = group.direction ?? this.readArrangedGroupDirection(group.id) ?? this.readConnectedGroupDirection(group.id);
       if (direction) groupBlocks.push(`    direction ${direction}`);
       groupBlocks.push(...memberLines);
       groupBlocks.push("  end");
@@ -1254,6 +1267,57 @@ export class GraphCanvasComponent implements AfterViewInit {
   private readArrangedGroupDirection(groupId: string): "TB" | "LR" | null {
     if (this.groupsPerLine() === null || !this.arrangeableGroups().some((group) => group.id === groupId)) return null;
     return this.direction() === "TD" ? "TB" : "LR";
+  }
+
+  /**
+   * Inner direction for a group wired into the rest of the graph that the host
+   * left unset.
+   *
+   * VALUE: Without it a chain of groups keeps the outer direction inside every
+   * group, so a long process renders as one long strip. Running the steps across
+   * the flow stacks the groups as short rows (or columns). Off in `'mermaid'`
+   * (legacy) mode; independent groups are handled by
+   * {@link readArrangedGroupDirection}.
+   */
+  private readConnectedGroupDirection(groupId: string): "TB" | "BT" | "LR" | "RL" | null {
+    if (this.groupArrangement() === "mermaid" || this.arrangeableGroups().some((group) => group.id === groupId)) return null;
+    return connectedGroupDirection(this.direction(), this.groupChainLevels().get(groupId) ?? 0, this.groupFlow());
+  }
+
+  /**
+   * Redraw plan for arrows that cross a group border, or null when there is
+   * nothing to redraw.
+   *
+   * VALUE: Mermaid draws such an arrow from group border to group border once a
+   * group runs a different way to the graph; redrawing it keeps the compact
+   * layout and the exact step-to-step arrows. Off in `'mermaid'` (legacy) mode.
+   */
+  private buildGroupCrossingPlan(): GroupCrossingPlan | null {
+    if (this.groupArrangement() === "mermaid") return null;
+    const groups = this.activeGroups() ?? [];
+    if (groups.length === 0) return null;
+
+    const { toAlias } = this.aliasMap();
+    const groupAliasFor = this.groupAliasMap();
+    const independentIds = new Set(this.arrangeableGroups().map((group) => group.id));
+    const groupOfNode = new Map<string, string>();
+    const routedGroups = new Set<string>();
+    for (const group of groups) {
+      const groupAlias = groupAliasFor.get(group.id);
+      if (!groupAlias) continue;
+      if (!independentIds.has(group.id)) routedGroups.add(groupAlias);
+      for (const nodeId of group.nodeIds) {
+        const nodeAlias = toAlias.get(nodeId);
+        if (nodeAlias && !groupOfNode.has(nodeAlias)) groupOfNode.set(nodeAlias, groupAlias);
+      }
+    }
+
+    const edges = this.resolveEdges().flatMap((edge) => {
+      const from = toAlias.get(edge.from);
+      const to = toAlias.get(edge.to);
+      return from && to ? [{ from, to }] : [];
+    });
+    return { flow: this.direction(), groupOfNode, routedGroups, edges };
   }
 
   /**
@@ -1478,7 +1542,10 @@ export class GraphCanvasComponent implements AfterViewInit {
         return;
       }
 
-      // In the hidden sandbox, so the visible graph never shows titles under arrows.
+      // In the hidden sandbox, so the visible graph never shows Mermaid's
+      // border-to-border arrows between groups, or titles under arrows.
+      const crossingPlan = this.buildGroupCrossingPlan();
+      if (crossingPlan) routeGroupCrossings(this.renderSandboxHost, crossingPlan);
       raiseGroupLabels(this.renderSandboxHost);
       this.setRenderPhase(token, "swapping");
       renderedGraphHost.innerHTML = this.renderSandboxHost.innerHTML;

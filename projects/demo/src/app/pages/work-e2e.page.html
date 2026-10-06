@@ -9,6 +9,7 @@
   }
   <label>View <select [ngModel]="view()" (ngModelChange)="changeView($event)"><option value="subflows">Compact subflows</option><option value="grouped">Grouped steps</option><option value="flat">All steps</option></select></label>
   <label>Layout <select [ngModel]="direction()" (ngModelChange)="direction.set($event)"><option value="LR">Left to right</option><option value="TD">Top to bottom</option></select></label>
+  <label>Group flow <select [ngModel]="groupFlow()" (ngModelChange)="groupFlow.set($event)"><option value="alternate">Alternate (snake)</option><option value="same">Same direction</option></select></label>
   <label>Scenario <select [ngModel]="fail()" (ngModelChange)="fail.set($event)" [disabled]="locked()"><option [ngValue]="false">Successful trip</option><option [ngValue]="true">SQL timeout</option></select></label>
   <label>Update cadence <select [ngModel]="speed()" (ngModelChange)="speed.set($event)" [disabled]="playing()"><option [ngValue]="500">2 / second</option><option [ngValue]="250">4 / second</option><option [ngValue]="100">10 / second</option></select></label>
   <label class="check"><input type="checkbox" [ngModel]="follow()" (ngModelChange)="follow.set($event)"> Follow execution</label>
@@ -27,7 +28,7 @@
 <div class="graph-shell">
   <mr-graph-canvas #canvas
     [nodes]="graph().nodes" [transitions]="graph().transitions ?? null" [groups]="graph().groups ?? null"
-    [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
+    [groupFlow]="groupFlow()" [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
     [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()"
     (nodeContextMenu)="openMenu($event)" [showDetail]="inspector()"
     [followExecution]="follow()" [replayActive]="!motion()" [showSubgraphPreview]="false"

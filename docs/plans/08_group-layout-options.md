@@ -62,6 +62,30 @@ shelf-packing algorithm.
 Validate each with the Large-flow lab (24/120/240 steps, both directions) and the layout-regression suite.
 Add the measured SVG sizes to the runbook.
 
+## Connected chains: options (2026-10-06)
+
+Source: user at work still saw a long grouped process in one column ([runbook 05](../runbook/05_group-layout-spike.md#connected-chains-measured-2026-10-06) has the measurements and a correction). These refine option C.
+
+**Status:** options 1 and 2 are built, with both looks as a host setting `groupFlow` (`'alternate'` default, `'same'`); see [runbook 05](../runbook/05_group-layout-spike.md#implementation-exact-arrows-between-phases-and-groupflow-2026-10-06). Options 3 and 4 are still open.
+
+**Corrected finding:** on Mermaid 11.16.0, an explicit `direction` on each group compacts a connected chain while keeping the real step-to-step arrows. The library simply never emits a direction for connected groups. Options 1 and 2 below build on that.
+
+| Option | How | Gives | Gives up | Cost |
+| --- | --- | --- | --- | --- |
+| 1. Direction for connected groups | Emit the across-the-flow direction (optionally alternating per group) for connected groups too, when the host has not set one | 10 × 6 chain from 0.13 to 0.53 fit (TD), 0.61 (LR); steps and their arrows stay Mermaid's own | Mermaid draws the arrow between phases box to box, not step to step | Small |
+| 2. Option 1 + exact arrows between phases | Hide Mermaid's cross-group arrows and draw them ourselves from the measured last/first steps (straight when alternating directions) | Arrows start and end on the real steps | Replay pulses and edge labels on those arrows need mapping to the drawn arrows | Medium |
+| 3. Wrap very long chains | Split a chain that is still too tall into columns or rows chosen from the viewport (reuses `chooseGroupsPerLine`); draw the joining arrows ourselves | Chains past ~15 phases fit | Only pays off for long chains (20 × 6: fit 0.26 as one stack) | Medium-high |
+| 4. Collapsed phases | One summary node per group (rolled-up progress and time), expanded on click or zoom | 60 steps read as 10 nodes; fits the zoomed-out detail request | Steps hidden until expanded | Medium-high |
+
+**Mock-up of option 2 with fan-out and fan-in (2026-10-06, scratch spike, not in the repo):** four synthetic phases, one step feeding three parallel steps, two parallel steps feeding one. Mermaid's own cross-group arrows were hidden and elbow arrows drawn from the measured steps. Each arrow leaves a step by its outer side, runs down a lane inside the group's margin (so stacked parallel steps are never crossed), and enters the target from its outer side; parallel arrows share the lane and read as a bus. This worked the same in both looks:
+
+- **Snake** (rows alternate direction): the last steps and the next group's first steps sit on the same side, so each hand-off is one straight lane. Reading order flips every row.
+- **All left to right:** the lane drops to the gap, runs back along the gap, then down the next group's left margin. Reading order is the same in every row; arrows are longer.
+
+Fan-in and fan-out do not favour either look; the difference is reading order versus arrow length. The same router serves both, so the look can be a host setting (`groupFlow`, name not decided). Not yet covered: edges that skip a phase, groups wrapped into several columns, and matching the arrow style (Mermaid's arrows inside groups are curved, the drawn ones are elbows).
+
+ELK was tried and ruled out (still one strip; group direction ignored). **Recommendation:** option 1 now, since it is the actual fix and small, then option 2 so arrows meet the real steps. Option 3 only if real chains exceed ~15 phases. Option 4 belongs with the zoomed-out node detail work ([runbook 08](../runbook/08_outstanding-requests.md)).
+
 ## Open questions
 
 - Is a behaviour change to the default (A) OK for the daemon's existing graphs, or should it be opt-in?

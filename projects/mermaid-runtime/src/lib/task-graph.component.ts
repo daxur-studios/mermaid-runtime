@@ -83,6 +83,9 @@ export class TaskGraphComponent {
   /** How independent groups are packed (see {@link MermaidRuntime.GroupArrangement}). */
   readonly groupArrangement = input<MermaidRuntime.GroupArrangement>('auto');
 
+  /** Which way the steps in each group of a chain run (see {@link MermaidRuntime.GroupFlow}). */
+  readonly groupFlow = input<MermaidRuntime.GroupFlow>('alternate');
+
   /** Currently selected node id (highlight only; host owns the value). */
   readonly selectedNodeId = input<string | null>(null);
 

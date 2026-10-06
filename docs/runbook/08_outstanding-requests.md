@@ -38,6 +38,8 @@ Each item records what the user asked for (**user-reported**) and what the code 
 
 **Code-verified:** `decoration.shape` accepts `'rect' | 'diamond' | 'subroutine'`. Rings and outlines follow rectangles and polygons (`<rect>`, `<polygon>`), so diamonds already work. Mermaid shapes drawn as paths, such as the database cylinder, have no ring support yet. No demo page shows a diamond or subroutine node.
 
+**User-reported (2026-10-06):** the user shared a reference system diagram with database cylinders, hexagon topics, double-bar process boxes, circles, per-kind colours and domain boxes. Mermaid flowcharts support these natively (custom shapes, CSS classes, click events, markdown labels), and it also has other diagram types such as `stateDiagram-v2`. The library only builds `flowchart` sources today (code-verified: `flowchart TD`/`LR` in `buildGraph`), so other diagram types would belong to [plan 07](../plans/07_system-visualisation-options.md)'s multi-diagram seam.
+
 **Proposed:** add a shapes demo first (rect, diamond, subroutine, each running), then add more shapes and ring support for path-drawn shapes.
 
 ### 5. Custom HTML node example

@@ -288,16 +288,15 @@ export namespace MermaidRuntime {
     /** Ids of the member nodes, at this graph's level. A node belongs to at most one group. */
     nodeIds: string[];
     /**
-     * Internal layout direction for this group's members; inherits the outer
-     * flow direction when omitted.
+     * Internal layout direction for this group's members. When omitted, the
+     * viewer picks one (see {@link GroupArrangement}): the outer flow direction
+     * for independent groups, across the flow for groups chained to others.
      *
-     * CAVEAT: Mermaid/dagre's edge routing for edges that cross into or out of
-     * a cluster is unreliable once the cluster's `direction` differs from its
-     * parent's — the edge can visually clip to the cluster's border instead of
-     * reaching the actual node. Only set `direction` on a group whose members
-     * have no edges to/from nodes outside the group; otherwise omit it (the
-     * group still renders as a labelled box, just without the layout
-     * compaction a differing direction would otherwise give it).
+     * NOTE: Mermaid/dagre draws an edge that crosses into or out of a cluster
+     * whose `direction` differs from its parent's from the cluster's border, not
+     * from the actual node. The viewer redraws those edges from step to step
+     * (unless `groupArrangement` is `'mermaid'`), whether the direction came
+     * from here or was chosen by the viewer.
      */
     direction?: 'TB' | 'BT' | 'LR' | 'RL';
   }
@@ -315,12 +314,39 @@ export namespace MermaidRuntime {
    *   fits the viewport at the largest zoom. Re-evaluated only when the
    *   viewport's aspect ratio changes substantially.
    * - `{ groupsPerLine: n }`: same, but always `n` groups per line.
-   * - `'mermaid'`: legacy behaviour — Mermaid's own placement, no wrapping.
+   * - `'mermaid'`: legacy behaviour — Mermaid's own placement, no wrapping, and
+   *   no direction chosen for groups.
    *
-   * VALUE: Groups wired into the rest of the graph are never touched, and a
-   * group's own `direction` always wins, so hosts can still pin a specific look.
+   * Groups wired into each other (a chain of phases) are not wrapped, but with
+   * `'auto'` or `{ groupsPerLine }` their steps run across the flow so the chain
+   * stacks as short rows/columns instead of one long strip (see {@link GroupFlow}
+   * for which way each group runs), and the arrows between them are redrawn from
+   * step to step.
+   *
+   * VALUE: A group's own `direction` always wins, so hosts can still pin a
+   * specific look.
    */
   export type GroupArrangement = 'auto' | 'mermaid' | { groupsPerLine: number };
+
+  /**
+   * Which way the steps inside each group of a chain run, from one group to the next.
+   *
+   * PURPOSE: Groups wired one after another stack as short rows (or columns).
+   * This chooses between a snake and a repeating sweep.
+   *
+   * - `'alternate'` (default): each group runs the opposite way to the group
+   *   before it (a snake). The last steps of one group sit next to the first steps
+   *   of the next, so the arrow between groups is short and straight.
+   * - `'same'`: every group runs the same way, so every row reads left to right
+   *   (or every column top to bottom). The arrow between groups sweeps back to
+   *   the start of the next one.
+   *
+   * VALUE: Both keep the arrows between groups on the real steps (see
+   * `GroupArrangement`); hosts pick the look that suits how their users read the
+   * flow. Has no effect with `groupArrangement: 'mermaid'`, or on a group that
+   * sets its own `direction`.
+   */
+  export type GroupFlow = 'alternate' | 'same';
 
   /**
    * A self-contained graph: the top-level viewer input and the shape of any

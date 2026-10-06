@@ -22,6 +22,7 @@ export class WorkE2ePage {
   protected readonly motion = signal(true);
   protected readonly inspector = signal(true);
   protected readonly direction = signal<'TD' | 'LR'>('LR');
+  protected readonly groupFlow = signal<'alternate' | 'same'>('alternate');
   protected readonly path = signal<string[]>([]);
   protected readonly selected = signal<string | null>(null);
   protected readonly menu = signal({ x: 0, y: 0 });

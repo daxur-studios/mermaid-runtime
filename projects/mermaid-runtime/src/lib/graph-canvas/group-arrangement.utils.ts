@@ -81,6 +81,70 @@ export function findIndependentGroupIds(
   return independent;
 }
 
+/**
+ * Inner direction that compacts a group wired into a chain of groups.
+ *
+ * PURPOSE: A chain of connected groups has no free placement (each group sits
+ * after the previous one along the flow), so the only way to shorten it is to
+ * run the steps *inside* each group across the flow.
+ *
+ * `level` is the group's position in its chain (see
+ * {@link computeGroupChainLevels}); with `groupFlow` `'alternate'`, odd levels
+ * run the opposite way to even ones, which makes the chain a snake.
+ *
+ * VALUE: A top-to-bottom flow becomes a stack of short rows, and a
+ * left-to-right flow a row of short columns, instead of one long strip.
+ */
+export function connectedGroupDirection(flow: GraphFlowDirection, level = 0, groupFlow: MermaidRuntime.GroupFlow = 'same'): 'LR' | 'RL' | 'TB' | 'BT' {
+  const reversed = groupFlow === 'alternate' && level % 2 === 1;
+  if (flow === 'TD') return reversed ? 'RL' : 'LR';
+  return reversed ? 'BT' : 'TB';
+}
+
+/**
+ * Position of each group along its chain: 0 for a group nothing feeds, one more
+ * than the furthest group that feeds it otherwise.
+ *
+ * PURPOSE: Lets {@link connectedGroupDirection} alternate by chain position,
+ * so each group runs the opposite way to the one before it, whichever order the
+ * host listed the groups in. Parallel groups at the same position run the same way.
+ *
+ * VALUE: Safe on cyclic graphs (positions stop growing after one pass per
+ * group), so a loop in the flow never hangs the renderer.
+ */
+export function computeGroupChainLevels(
+  groups: readonly MermaidRuntime.NodeGroup[],
+  edges: readonly { from: string; to: string }[],
+): Map<string, number> {
+  const groupOf = new Map<string, string>();
+  for (const group of groups) {
+    for (const nodeId of group.nodeIds) {
+      if (!groupOf.has(nodeId)) groupOf.set(nodeId, group.id);
+    }
+  }
+  const links = new Set<string>();
+  for (const edge of edges) {
+    const from = groupOf.get(edge.from);
+    const to = groupOf.get(edge.to);
+    if (from && to && from !== to) links.add(`${from}\u0000${to}`);
+  }
+
+  const levels = new Map<string, number>(groups.map((group) => [group.id, 0]));
+  for (let pass = 0; pass < groups.length; pass++) {
+    let changed = false;
+    for (const link of links) {
+      const [from, to] = link.split('\u0000');
+      const next = (levels.get(from) ?? 0) + 1;
+      if (next > (levels.get(to) ?? 0) && next < groups.length) {
+        levels.set(to, next);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return levels;
+}
+
 /** Rough footprint for a not-yet-measured group of `memberCount` chained nodes. */
 export function estimateGroupFootprint(memberCount: number, flow: GraphFlowDirection): GroupFootprint {
   const along = Math.max(1, memberCount) * ESTIMATED_NODE_ALONG_PX[flow];
