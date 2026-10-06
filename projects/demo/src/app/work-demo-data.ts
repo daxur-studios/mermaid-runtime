@@ -47,8 +47,14 @@ const phases: PhaseDefinition[] = [
 
 export const DEMO_END = 24;
 
+/** Long, realistic step names, so label wrapping can be checked. SQL steps also carry one unbreakable identifier. */
+function buildLongTitle(step: StepDefinition): string {
+  const identifier = step.type === 'SQL' ? ' [trip_cache.public_guid_mapping_by_legacy_number]' : '';
+  return `${step.title}: ${step.detail}${identifier}`;
+}
+
 /** Pure synthetic fixture; IDs stay stable across ticks, views, and environments. */
-export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick: number, view: DemoView, fail: boolean): MermaidRuntime.Graph {
+export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick: number, view: DemoView, fail: boolean, longLabels = false): MermaidRuntime.Graph {
   const nodes: MermaidRuntime.Node[] = [];
   const transitions: MermaidRuntime.Transition[] = [];
   const groups: MermaidRuntime.NodeGroup[] = [];
@@ -65,7 +71,7 @@ export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick:
         const blocked = fail && tick >= 17 && (phase > 4 || (phase === 4 && index > 1));
         const status = skipped ? 'skipped' : failed ? 'failed' : blocked ? 'undone' : tick >= start + 1 ? 'complete' : tick > start ? 'running' : 'undone';
         return {
-          id: `${phaseId}-step-${index}`, title: step.title, type: step.type, status,
+          id: `${phaseId}-step-${index}`, title: longLabels ? buildLongTitle(step) : step.title, type: step.type, status,
           detail: skipped ? 'Skipped: local-only preparation is ineligible in shared dev.' : blocked ? 'Blocked: the SQL cache wait failed. This synthetic scenario stops at the failure.' : step.detail,
           error: failed ? 'Synthetic timeout: no matching cache row after 30 seconds.' : null,
           progressPercent: status === 'running' ? Math.round((tick - start) * 100) : status === 'complete' ? 100 : null,

@@ -86,3 +86,20 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 - Pick a daemon extraction option ([plan 09](../plans/09_daemon-extraction-candidates.md)).
 - Subflow preview thumbnails still draw group titles under the arrows; the title pill padding is fixed in code; the consumer agent guide does not mention the title variables yet.
 - The daemon overrides the dot colour (opacity 0.1), so it shows dimmer dots until it drops that override or uses `material`.
+
+## Long step names (2026-10-06)
+
+**User-reported:** at work most step labels are too long for their nodes and overflow. The demo only had short names. The user chose option A (wrap to a max width) with a smaller line height. Design review (Opus 5.5) also proposed line clamping, a title + subtitle line, shapes, a kind registry and group tones; those are not built.
+
+**Cause (code-verified):** Mermaid measures a label before the canvas stylesheet applied its padding, so the text wrapped onto more lines than the box was sized for and spilled out.
+
+**Change:**
+- `NODE_LABEL_CSS` in `mermaid-theme.ts` is passed to Mermaid as `themeCSS`, so padding, line height and word breaking apply while Mermaid measures. The old rule in `graph-canvas.component.scss` is removed.
+- `flowchart.wrappingWidth` is set to 200px (Mermaid's default, now named) and `overflow-wrap:anywhere` breaks a single long identifier at that width.
+- Line height is 1.2 (Mermaid's inline default is 1.5).
+- `withNodeLabelLayout` adds both to a host's own `mermaidConfig`. The host's `themeCSS` follows ours, and its `wrappingWidth` is kept.
+- The Large-flow lab has a **Long step names** checkbox.
+
+**Validation:** unit 58/58 (3 new), e2e 16/16 (1 new, `e2e/node-labels.spec.ts`). The new e2e fails on the old code (about 3px spill) and passes now, in TD and LR. Library build OK. Not committed.
+
+**Not done:** a step title containing a double quote still breaks the whole graph, because `escapeMermaidString` writes `\"` and Mermaid expects `#quot;`. Sideways overflow at work may come from the host's own CSS or fonts, which the lab cannot show.

@@ -14,6 +14,7 @@
   <label>Update cadence <select [ngModel]="speed()" (ngModelChange)="speed.set($event)" [disabled]="playing()"><option [ngValue]="500">2 / second</option><option [ngValue]="250">4 / second</option><option [ngValue]="100">10 / second</option></select></label>
   <label class="check"><input type="checkbox" [ngModel]="follow()" (ngModelChange)="follow.set($event)"> Follow execution</label>
   <label class="check"><input type="checkbox" [ngModel]="motion()" (ngModelChange)="motion.set($event)"> Activity pulses</label>
+  <label class="check"><input type="checkbox" [ngModel]="longLabels()" (ngModelChange)="longLabels.set($event)"> Long step names</label>
   <label class="check"><input type="checkbox" [ngModel]="inspector()" (ngModelChange)="inspector.set($event)"> Step details</label>
 </section>
 <section class="runbar" aria-label="Simulation controls">

@@ -7,7 +7,7 @@ import { MermaidRuntime } from "../task-graph-model";
 import { GraphCameraComponent, type GraphCameraState, type GraphRect } from "../graph-camera/graph-camera.component";
 import { MinimapComponent } from "../minimap/minimap.component";
 import { GraphBreadcrumbComponent, type GraphBreadcrumbEntry } from "../graph-breadcrumb/graph-breadcrumb.component";
-import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, type MermaidRuntimeConfig } from "../mermaid-theme";
+import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, withNodeLabelLayout, type MermaidRuntimeConfig } from "../mermaid-theme";
 import { ensureMermaidConfigured } from "../mermaid-config";
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
@@ -776,7 +776,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   readonly graphPathChange = output<string[]>();
 
-  protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() => this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? false));
+  protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() => withNodeLabelLayout(this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? false)));
 
   private readonly internalSelectedNodeId = signal<string | null>(null);
 

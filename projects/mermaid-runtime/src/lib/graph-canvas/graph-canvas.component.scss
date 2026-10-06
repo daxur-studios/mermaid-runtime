@@ -296,23 +296,10 @@
 }
 
 // ── Node Label Layout & Text Wrapping ──────────────────────────────
-
-:host ::ng-deep .mermaid .node .nodeLabel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  text-align: left;
-  padding: 6px 12px;
-
-  > span {
-    display: inline-block;
-    max-width: 160px;
-    white-space: normal;
-    word-wrap: break-word;
-    line-height: 1.3;
-  }
-}
+// Padding, line height and word breaking live in NODE_LABEL_CSS
+// (mermaid-theme.ts), passed to Mermaid as themeCSS. Rules here would apply
+// after Mermaid measured the label, so the text would wrap differently from
+// what the box was sized for and spill out of it.
 
 // Drillable (subroutine-shaped) nodes render Mermaid's double-bar frame
 // outside the label box, so they already get more auto-sizing headroom than
