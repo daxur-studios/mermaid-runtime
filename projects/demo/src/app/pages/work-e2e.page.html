@@ -15,6 +15,7 @@
   <label class="check"><input type="checkbox" [ngModel]="follow()" (ngModelChange)="follow.set($event)"> Follow execution</label>
   <label class="check"><input type="checkbox" [ngModel]="motion()" (ngModelChange)="motion.set($event)"> Activity pulses</label>
   <label class="check"><input type="checkbox" [ngModel]="longLabels()" (ngModelChange)="longLabels.set($event)"> Long step names</label>
+  <label class="check"><input type="checkbox" [ngModel]="commands()" (ngModelChange)="commands.set($event)"> Command lines</label>
   <label class="check"><input type="checkbox" [ngModel]="inspector()" (ngModelChange)="inspector.set($event)"> Step details</label>
 </section>
 <section class="runbar" aria-label="Simulation controls">

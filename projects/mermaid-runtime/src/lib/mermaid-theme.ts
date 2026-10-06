@@ -91,6 +91,13 @@ export const NODE_LABEL_CSS = `
   margin: 0;
   line-height: ${NODE_LABEL_LINE_HEIGHT};
 }
+.node .nodeLabel .mr-node-subtitle {
+  display: block;
+  margin-top: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8em;
+  opacity: 0.72;
+}
 `;
 
 /**

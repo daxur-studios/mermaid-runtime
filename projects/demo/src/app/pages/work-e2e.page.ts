@@ -22,6 +22,7 @@ export class WorkE2ePage {
   protected readonly motion = signal(true);
   protected readonly inspector = signal(true);
   protected readonly longLabels = signal(false);
+  protected readonly commands = signal(false);
   protected readonly direction = signal<'TD' | 'LR'>('LR');
   protected readonly groupFlow = signal<'alternate' | 'same'>('alternate');
   protected readonly path = signal<string[]>([]);
@@ -30,7 +31,7 @@ export class WorkE2ePage {
   protected readonly headed = signal(false);
   protected readonly depot = signal('North depot');
   protected readonly speed = signal(250);
-  protected readonly graph = computed(() => buildWorkDemo(this.trips(), this.environment(), this.tick(), this.view(), this.fail(), this.longLabels()));
+  protected readonly graph = computed(() => buildWorkDemo(this.trips(), this.environment(), this.tick(), this.view(), this.fail(), this.longLabels(), this.commands()));
   protected readonly locked = computed(() => this.tick() > 0 || this.playing());
   protected readonly outcome = computed(() => this.fail() && this.tick() >= 17 ? 'Failed' : this.tick() >= DEMO_END ? 'Complete' : this.playing() ? 'Running' : this.tick() > 0 ? 'Paused' : 'Ready');
   protected readonly context = computed(() => JSON.stringify({

@@ -1365,7 +1365,7 @@ export class GraphCanvasComponent implements AfterViewInit {
   }
 
   private buildNodeDefinitionLine(node: MermaidRuntime.Node, alias: string, decoration: MermaidRuntime.NodeDecoration | undefined): string {
-    const title = this.buildNodeLabel(decoration?.displayTitle ?? node.title);
+    const title = this.buildNodeLabel(decoration?.displayTitle ?? node.title, node.subtitle);
     const reservedPreview = this.showSubgraphPreview() && this.resolveSubgraph(node) ? this.buildReservedContentHtml("subgraph-preview") : "";
     const label = `${title}${reservedPreview}`;
     switch (decoration?.shape) {
@@ -1381,13 +1381,22 @@ export class GraphCanvasComponent implements AfterViewInit {
   /**
    * Builds the Mermaid node label.
    *
-   * PURPOSE: Keep Mermaid source limited to plain node text.
+   * PURPOSE: Keep Mermaid source limited to node text, plus one styled span for the subtitle.
    *
    * VALUE: Live progress markup is injected after render, so Mermaid cannot
-   * parse-fail on HTML controls or changing percentage values.
+   * parse-fail on HTML controls or changing percentage values. The subtitle is
+   * escaped as text, so a command containing `<`, `&` or quotes shows as typed.
+   * The span uses single quotes because this HTML sits inside a double-quoted
+   * Mermaid label.
    */
-  private buildNodeLabel(title: string): string {
-    return this.escapeMermaidString(title);
+  private buildNodeLabel(title: string, subtitle?: string | null): string {
+    const text = this.escapeMermaidString(title);
+    const line = subtitle?.trim();
+    return line ? `${text}<span class='mr-node-subtitle'>${this.escapeMermaidString(this.escapeHtml(line))}</span>` : text;
+  }
+
+  private escapeHtml(value: string): string {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   /**
@@ -1463,7 +1472,7 @@ export class GraphCanvasComponent implements AfterViewInit {
   }
 
   private escapeMermaidString(value: string): string {
-    return value.replace(/"/g, '\\"');
+    return value.replace(/"/g, '#quot;');
   }
 
   private onChartMutation(): void {

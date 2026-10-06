@@ -217,6 +217,18 @@ export namespace MermaidRuntime {
     id: string;
     title: string;
     status: NodeStatus;
+
+    /**
+     * Optional second line shown under the title, in a smaller monospace face.
+     *
+     * PURPOSE: Carry a short machine-readable line, such as a CLI call
+     * (`mycli db-poll {{tripId}}`), that would make the title hard to scan.
+     *
+     * VALUE: Hosts keep a readable title and still show exactly what the step runs.
+     * It is plain text: it is escaped, wraps like the title, and appears in full
+     * in the inspector.
+     */
+    subtitle?: string | null;
     detail?: string | null;
     error?: string | null;
 

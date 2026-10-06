@@ -36,6 +36,12 @@
         <dd>{{ node.type }}</dd>
       </div>
     }
+    @if (node.subtitle) {
+      <div>
+        <dt>Command</dt>
+        <dd><code>{{ node.subtitle }}</code></dd>
+      </div>
+    }
     @if (node.startedAt) {
       <div>
         <dt>Started</dt>
