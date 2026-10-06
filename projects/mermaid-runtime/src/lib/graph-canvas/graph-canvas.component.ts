@@ -1392,7 +1392,17 @@ export class GraphCanvasComponent implements AfterViewInit {
   private buildNodeLabel(title: string, subtitle?: string | null): string {
     const text = this.escapeMermaidString(title);
     const line = subtitle?.trim();
-    return line ? `${text}<span class='mr-node-subtitle'>${this.escapeMermaidString(this.escapeHtml(line))}</span>` : text;
+    return line ? `${text}<span class='mr-node-subtitle'>${this.highlightPlaceholders(this.escapeMermaidString(this.escapeHtml(line)))}</span>` : text;
+  }
+
+  /**
+   * Wraps each `{{name}}` placeholder in a span so the label can colour it.
+   *
+   * VALUE: In a command line the variable parts are what a reader looks for;
+   * they stand out from the fixed words without any host markup.
+   */
+  private highlightPlaceholders(escapedText: string): string {
+    return escapedText.replace(/{{[^{}]*}}/g, (placeholder) => `<span class='mr-node-param'>${placeholder}</span>`);
   }
 
   private escapeHtml(value: string): string {

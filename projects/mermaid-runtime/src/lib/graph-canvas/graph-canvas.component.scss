@@ -259,7 +259,8 @@
   stroke-width: 3px !important;
 }
 
-:host ::ng-deep .mermaid .node:hover span {
+// The subtitle and its {{placeholders}} keep their own colours (see NODE_LABEL_CSS).
+:host ::ng-deep .mermaid .node:hover span:not(.mr-node-subtitle):not(.mr-node-param) {
   color: var(--mat-sys-on-surface) !important;
 }
 
@@ -430,11 +431,11 @@
   opacity: 0.5 !important;
 }
 
-:host ::ng-deep .mermaid .node.current span,
-:host ::ng-deep .mermaid .node.running span,
-:host ::ng-deep .mermaid .node.done span,
-:host ::ng-deep .mermaid .node.failed span,
-:host ::ng-deep .mermaid .node.skipped span {
+:host ::ng-deep .mermaid .node.current span:not(.mr-node-subtitle):not(.mr-node-param),
+:host ::ng-deep .mermaid .node.running span:not(.mr-node-subtitle):not(.mr-node-param),
+:host ::ng-deep .mermaid .node.done span:not(.mr-node-subtitle):not(.mr-node-param),
+:host ::ng-deep .mermaid .node.failed span:not(.mr-node-subtitle):not(.mr-node-param),
+:host ::ng-deep .mermaid .node.skipped span:not(.mr-node-subtitle):not(.mr-node-param) {
   color: var(--mat-sys-on-surface) !important;
 }
 

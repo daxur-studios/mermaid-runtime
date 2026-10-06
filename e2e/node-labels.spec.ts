@@ -50,3 +50,28 @@ test('long step names wrap inside their nodes in both directions', async ({ page
     expect(Math.max(...labels.map((label) => label.lines)), `${layout}: longest name wraps`).toBeGreaterThanOrEqual(MIN_WRAPPED_LINES);
   }
 });
+
+test('command lines show under the title as typed, with quotes, angle brackets and braces intact', async ({ page }) => {
+  await page.goto('/large-flow');
+  await page.getByRole('combobox', { name: 'Flow size', exact: true }).selectOption({ label: '24 steps · 1 trip' });
+  await page.getByRole('combobox', { name: 'View', exact: true }).selectOption({ label: 'Grouped steps' });
+  await page.getByRole('checkbox', { name: 'Command lines' }).check();
+  await waitForStableGraph(page);
+
+  const commands = await page.evaluate(() => {
+    const svg = document.querySelector('.graph-canvas__mermaid svg') as SVGSVGElement;
+    return [...svg.querySelectorAll('g.node')].map((node) => {
+      const subtitle = node.querySelector('.mr-node-subtitle');
+      const title = node.querySelector('.nodeLabel')!.textContent!.replace(subtitle?.textContent ?? '', '').trim();
+      return { title, params: [...node.querySelectorAll('.mr-node-param')].map((param) => param.textContent), command: subtitle?.textContent ?? null, below: subtitle ? subtitle.getBoundingClientRect().top >= node.querySelector('p')!.getBoundingClientRect().top : false };
+    });
+  });
+
+  expect(commands.length).toBe(24);
+  for (const { title, command, below, params } of commands) {
+    expect(params, `"${title}": {{placeholders}} are highlighted`).toEqual([title.startsWith('Assert') ? '{{depotId}}' : '{{tripId}}']);
+    expect(command, `"${title}" has a command line`).toMatch(/^tripcli /);
+    expect(below, `"${title}": command is part of its label`).toBe(true);
+  }
+  expect(commands.find((entry) => entry.title === 'Assert trip mapping')?.command).toBe('tripcli assert assert-trip-mapping --expect "<public_guid>" --depot {{depotId}}');
+});

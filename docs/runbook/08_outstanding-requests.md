@@ -103,3 +103,15 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 **Validation:** unit 58/58 (3 new), e2e 16/16 (1 new, `e2e/node-labels.spec.ts`). The new e2e fails on the old code (about 3px spill) and passes now, in TD and LR. Library build OK. Not committed.
 
 **Not done:** a step title containing a double quote still breaks the whole graph, because `escapeMermaidString` writes `\"` and Mermaid expects `#quot;`. Sideways overflow at work may come from the host's own CSS or fonts, which the lab cannot show.
+
+### Subtitle (command line) under the title (2026-10-06)
+
+**User-reported:** steps are CLI calls, so each wants a readable title plus a line like `somecli somecommand {{someParam}}`. The user liked the subtitle option from the design review.
+
+**Change:** `Node.subtitle` is drawn under the title in a smaller monospace face (`.mr-node-subtitle` in `NODE_LABEL_CSS`, so it is measured with the box). It is escaped as text and wraps like the title. The inspector shows it in full under **Command**. The Large-flow lab has a **Command lines** checkbox.
+
+**Also fixed:** `escapeMermaidString` now writes `#quot;`, so a title, group or edge label with a double quote no longer stops the graph rendering.
+
+**Validation:** unit 58/58, e2e 17/17 (1 new: command text with quotes, `<public_guid>` and `{{depotId}}` shows as typed). Library build OK. Not committed.
+
+**Not done:** highlighting `{{param}}` placeholders, a separate CLI-name prefix or chip (part of the kind-registry slice), shapes, line clamping.

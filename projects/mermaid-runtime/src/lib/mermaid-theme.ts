@@ -96,7 +96,11 @@ export const NODE_LABEL_CSS = `
   margin-top: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8em;
-  opacity: 0.72;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+}
+.node .nodeLabel .mr-node-param {
+  color: var(--mr-node-param-color, #e0a030);
+  font-weight: 600;
 }
 `;
 
