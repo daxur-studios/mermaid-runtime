@@ -164,13 +164,16 @@ function readLaneX(group: RouteGroup, side: 'left' | 'right'): number {
   return side === 'right' ? (group.contentBox.right + group.box.right) / 2 : (group.box.left + group.contentBox.left) / 2;
 }
 
-/** X of a lane that clears the steps of both groups and stays inside both borders, or `null` if there is none. */
+/**
+ * X of a lane on `side` that is past the steps of both groups and still inside
+ * both borders, or `null` if there is none (for example, groups of different
+ * widths whose margins do not overlap).
+ */
 function readSharedLaneX(a: RouteGroup, b: RouteGroup, side: 'left' | 'right'): number | null {
   const clear = side === 'right' ? Math.max(a.contentBox.right, b.contentBox.right) : Math.min(a.contentBox.left, b.contentBox.left);
   const border = side === 'right' ? Math.min(a.box.right, b.box.right) : Math.max(a.box.left, b.box.left);
-  const low = Math.min(clear, border);
-  const high = Math.max(clear, border);
-  return high - low > ROUTE_POINT_EPSILON_PX ? (low + high) / 2 : null;
+  const room = side === 'right' ? border - clear : clear - border;
+  return room > ROUTE_POINT_EPSILON_PX ? (clear + border) / 2 : null;
 }
 
 function edgeX(node: Box, side: 'left' | 'right'): number {

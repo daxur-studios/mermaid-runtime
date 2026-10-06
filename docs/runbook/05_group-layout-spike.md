@@ -150,3 +150,10 @@ Not covered (also in the README): an arrow that skips a phase runs down its sour
 
 - User looks at the Large-flow lab and gives feedback on both group flows.
 - Decide on elbow arrows everywhere, skip-phase arrows, and wrapping very long chains (plan 08 option 3).
+
+## Fix: shared lane through a step when groups differ in width (2026-10-06)
+
+- **User-reported (work project):** a hand-off between two groups of different widths ended with its arrowhead pointing the wrong way, and the line ran through the target step.
+- **Cause (code-verified):** `readSharedLaneX` picked the middle of "the outermost step edge" and "the nearest border". When the wider group's steps reach past the narrower group's border, that interval is inverted, so the lane landed inside the wide group's step and the last run entered the step from inside.
+- **Fix:** a shared lane is used only when it is past the steps of both groups and inside both borders. Otherwise each end uses its own margin lane and the arrow runs along the gap, so it enters the step from outside. Unit spec added for narrow-above-wide in both flow directions; unit 54/54, e2e 15/15.
+- **Gap in tests:** the lab's phases are all the same width, so e2e could not hit this. The unit spec covers it.

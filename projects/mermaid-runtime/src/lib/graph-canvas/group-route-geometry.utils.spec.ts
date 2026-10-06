@@ -18,6 +18,12 @@ function endpoint(node: Box, group: RouteGroup | null): RouteEndpoint {
   return { node, group };
 }
 
+/** The same endpoint with x and y swapped, for left-to-right checks. */
+function transposeFor(source: RouteEndpoint): RouteEndpoint {
+  const swap = (b: Box): Box => ({ left: b.top, top: b.left, right: b.bottom, bottom: b.right });
+  return { node: swap(source.node), group: source.group ? { box: swap(source.group.box), contentBox: swap(source.group.contentBox) } : null };
+}
+
 describe('routeGroupCrossing', () => {
   it('hands off straight down one lane when both steps are on the same side (snake)', () => {
     const route = routeGroupCrossing('TD', lastOfPhaseOne, firstOfPhaseTwoRight)!;
@@ -40,6 +46,23 @@ describe('routeGroupCrossing', () => {
     for (let index = 1; index < route.length; index++) {
       expect(route[index].x === route[index - 1].x || route[index].y === route[index - 1].y).toBeTrue();
     }
+  });
+
+  it('never runs a shared lane through a step when the groups are different widths', () => {
+    // Narrow phase above a wide one: the margins on the right do not overlap.
+    const narrow: RouteGroup = { box: box(0, 0, 400, 140), contentBox: box(40, 40, 320, 60) };
+    const wide: RouteGroup = { box: box(0, 190, 800, 140), contentBox: box(40, 230, 720, 60) };
+    const from = endpoint(box(240, 40, 120, 60), narrow);
+    const to = endpoint(box(640, 230, 120, 60), wide);
+    const route = routeGroupCrossing('TD', from, to)!;
+    expect(route[0]).toEqual({ x: 360, y: 70 });
+    expect(route[route.length - 1]).toEqual({ x: 760, y: 260 });
+    // the last run goes into the step from outside it, so the arrow points inward
+    expect(route[route.length - 2].x).toBeGreaterThan(760);
+    expect(route[route.length - 2].y).toBe(260);
+    // and the same turned on its side
+    const turned = routeGroupCrossing('LR', transposeFor(from), transposeFor(to))!;
+    expect(turned[turned.length - 2].y).toBeGreaterThan(760);
   });
 
   it('shares one lane between arrows from the same group (fan-out)', () => {
