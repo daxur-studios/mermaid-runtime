@@ -81,6 +81,17 @@ export const NODE_TONE_COLOURS: Readonly<Record<string, string>> = {
   slate: '#94a3b8',
 };
 
+/**
+ * Room (in em of the label font) kept at a node's right edge for its time.
+ *
+ * PURPOSE: A step's time is filled in after Mermaid has drawn the node, so the
+ * room has to be set aside while Mermaid measures the label.
+ *
+ * VALUE: Fits the longest usual time (`1m 05s`) at the time's smaller font size,
+ * so a time appearing later never overlaps the title or changes the node's size.
+ */
+export const NODE_TIME_RESERVE_EM = 3.4;
+
 /** One `--mr-tone` rule per built-in tone, built from {@link NODE_TONE_COLOURS}. */
 const NODE_TONE_CSS = Object.entries(NODE_TONE_COLOURS)
   .map(([name, colour]) => `.node .nodeLabel .mr-tone-${name} { --mr-tone: var(--mr-tone-${name}-colour, ${colour}); }`)
@@ -149,6 +160,21 @@ export const NODE_LABEL_CSS = `
   fill: inherit;
   stroke: inherit;
   stroke-width: inherit;
+}
+.node .nodeLabel:has(.mr-node-time) {
+  position: relative;
+  padding-right: calc(12px + ${NODE_TIME_RESERVE_EM}em);
+}
+.node .nodeLabel .mr-node-time {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  font-size: 0.8em;
+  line-height: ${NODE_LABEL_LINE_HEIGHT};
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+  color: color-mix(in srgb, currentColor 72%, transparent);
 }
 .node .nodeLabel .mr-node-chip {
   display: inline-block;

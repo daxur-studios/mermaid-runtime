@@ -19,6 +19,11 @@ import { computeProgressBadgeBox, selectVisibleNodeProgress } from "./node-progr
 import { buildGroupWrapLinks, chooseGroupsPerLine, computeGroupChainLevels, connectedGroupDirection, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
 import { routeGroupCrossings, type GroupCrossingPlan } from "./group-edge-routing.utils";
 import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
+import { GraphBannerComponent } from "../graph-banner/graph-banner.component";
+import { pickBannerMessage, type BannerMessage, type HostBannerMessage } from "../graph-banner/banner-message.utils";
+import { isGraphOutOfView } from "../graph-camera/camera-visibility.utils";
+import { DEFAULT_FAR_ZOOM_SCALE, nextZoomBand, resolveFarLabel, type ZoomBand } from "./far-zoom.utils";
+import { formatDurationMs, getLiveNodeTimeMs, measureGroupTimeMs, summariseRun, type RunSettledEvent, type RunState } from "./run-summary.utils";
 
 export type GraphRenderPhase =
   | "idle"
@@ -276,6 +281,44 @@ const NODE_DECORATION_CLASS = "mr-node-decoration";
  */
 const NODE_ICON_CLASS = "mr-node-icon";
 
+/** Class of the empty slot at a node's right edge that the step's time is written into. */
+const NODE_TIME_CLASS = "mr-node-time";
+
+/** Class of the pill drawn beside a group title to show the group's time. */
+const GROUP_TIME_CLASS = "mr-group-time";
+
+/**
+ * How often (ms) a running step's time counts up.
+ *
+ * VALUE: A time shown to one decimal under ten seconds and whole seconds after
+ * needs no finer tick, and a slower one would look stuck.
+ */
+const LIVE_TIME_REFRESH_MS = 1000;
+
+/** Class of the large one-line text a node shows when the viewer is zoomed far out. */
+const NODE_FAR_CLASS = "mr-node-far";
+
+/** Share of a node's height its far text may fill at most. */
+const FAR_LABEL_HEIGHT_SHARE = 0.6;
+
+/** Estimated width of one character of far text, as a share of its font size. */
+const FAR_LABEL_CHAR_WIDTH_RATIO = 0.62;
+
+/** Share of a node's width its far text may fill at most. */
+const FAR_LABEL_WIDTH_SHARE = 0.8;
+
+/** Gap (px, scene units) between a group title's pill and its time pill. */
+const GROUP_TIME_GAP_PX = 6;
+
+/** Horizontal padding (px, scene units) inside the group time pill. */
+const GROUP_TIME_PADDING_X_PX = 6;
+
+/** Group time text size as a share of the title pill's height. */
+const GROUP_TIME_FONT_RATIO = 0.62;
+
+/** Estimated width of one character of group time text, as a share of its font size (tabular digits). */
+const GROUP_TIME_CHAR_WIDTH_RATIO = 0.6;
+
 /** Class of the pill that shows a node kind's chip text. */
 const NODE_CHIP_CLASS = "mr-node-chip";
 
@@ -301,6 +344,22 @@ const FOLLOW_MAX_ZOOM = 1.4;
  * even during very early initialization.
  */
 const DEFAULT_CAMERA_STATE: GraphCameraState = { x: 0, y: 0, scale: 1 };
+
+/**
+ * How long (ms) the "run complete" or "run failed" banner stays before it slides away.
+ *
+ * VALUE: Long enough to read the counts and the time, short enough not to sit
+ * over the graph. The pill stays afterwards.
+ */
+const RUN_RESULT_BANNER_MS = 6000;
+
+/**
+ * How long (ms) the graph must stay out of view before "Back to graph" appears.
+ *
+ * VALUE: A camera animation or a quick pan can pass through an empty view; this
+ * keeps the prompt for a viewer who is really lost.
+ */
+const OUT_OF_VIEW_PROMPT_DELAY_MS = 500;
 
 /**
  * Class name applied to the hidden Mermaid render sandbox.
@@ -534,8 +593,9 @@ const GRAPH_EDGE_ID_TO_INDEX = 2;
     "[attr.data-render-phase]": "renderStatus().phase",
     "[attr.data-render-generation]": "renderStatus().generation",
     "[attr.data-render-message]": "renderStatus().message ?? null",
+    "[attr.data-zoom-band]": "zoomBand()",
   },
-  imports: [CommonModule, GraphCameraComponent, MinimapComponent, GraphBreadcrumbComponent],
+  imports: [CommonModule, GraphCameraComponent, MinimapComponent, GraphBreadcrumbComponent, GraphBannerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphCanvasComponent implements AfterViewInit {
@@ -804,6 +864,52 @@ export class GraphCanvasComponent implements AfterViewInit {
    */
   readonly graphPathChange = output<string[]>();
 
+  /**
+   * Emits once when the run finishes: every step complete or skipped, or a step
+   * failed with none still running.
+   *
+   * VALUE: Hosts react (notify, archive, start the next run) without watching the
+   * node list. It does not fire for a run that is already finished when the graph
+   * first appears.
+   */
+  readonly runSettled = output<RunSettledEvent>();
+
+  /**
+   * A message of the host's own for the top-centre banner.
+   *
+   * VALUE: Shares the slot with the run result and the "back to graph" prompt,
+   * which both outrank it while they apply.
+   */
+  readonly banner = input<HostBannerMessage | null>(null);
+
+  /**
+   * Shows each step's time at its right edge and each group's time beside its title.
+   *
+   * VALUE: Off by default, because it sets aside room in every node's label. The
+   * times come from the steps' `durationMs`, or `startedAt` and `endedAt`; a step that
+   * has not started shows nothing, a running step with a `startedAt` counts up.
+   */
+  readonly showTimes = input<boolean>(false);
+
+  /**
+   * Zoom (scale) below which each node swaps its text for one large line, such as its
+   * time. Null turns the far text off.
+   *
+   * VALUE: A far-out overview of hundreds of steps stays readable: it shows how long
+   * each took, or how far along it is, instead of text too small to read.
+   */
+  readonly farZoomScale = input<number | null>(DEFAULT_FAR_ZOOM_SCALE);
+
+  /**
+   * Text for a node when zoomed far out. Return a string to use it (an empty string
+   * shows nothing), or null to use the default (`NN%` while running, the time when
+   * done).
+   */
+  readonly farLabel = input<((node: MermaidRuntime.Node) => string | null | undefined) | null>(null);
+
+  /** Whether the viewer is close enough for full node text (`near`) or far enough for one short line (`far`). */
+  protected readonly zoomBand = signal<ZoomBand>("near");
+
   protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() => withNodeLabelLayout(this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? false)));
 
   private readonly internalSelectedNodeId = signal<string | null>(null);
@@ -989,8 +1095,54 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Follow is on and not paused — the camera should track the running nodes. */
   protected readonly followActive = computed(() => this.followExecution() && !this.followPaused());
 
-  /** Whether to offer the "re-center" chip (follow on, but paused by the user). */
-  protected readonly showRecenterChip = computed(() => this.followExecution() && this.followPaused());
+  /** Counts, state and time of the whole run, read from the root graph's steps. */
+  protected readonly runSummary = computed(() => summariseRun(this.nodes()));
+
+  /** True for a few seconds after a run settles, so its result shows in the banner. */
+  protected readonly runResultVisible = signal(false);
+
+  /**
+   * Little or none of the graph is on screen.
+   *
+   * VALUE: Computed from the camera and the cached content rectangle, so panning
+   * never measures the DOM.
+   */
+  private readonly graphOutOfView = computed(() => {
+    const content = this.minimapContentRect();
+    if (!content) return false;
+    return isGraphOutOfView(content, this.cameraState(), this.viewportSize());
+  });
+
+  /**
+   * {@link graphOutOfView}, held back by {@link OUT_OF_VIEW_PROMPT_DELAY_MS}, so a
+   * camera animation that passes through an empty view does not flash the prompt.
+   */
+  private readonly outOfViewPrompt = signal(false);
+
+  /** The one message the top-centre banner shows now, or null. */
+  protected readonly bannerMessage = computed<BannerMessage | null>(() =>
+    pickBannerMessage({
+      run: this.runSummary(),
+      runResultVisible: this.runResultVisible(),
+      hostMessage: this.banner(),
+      outOfView: this.outOfViewPrompt(),
+      followPaused: this.followExecution() && this.followPaused(),
+    }),
+  );
+
+  /** The settled run, kept as a small pill after the banner has gone; null while a run is in progress. */
+  protected readonly runPill = computed(() => {
+    const summary = this.runSummary();
+    if (summary.state !== "complete" && summary.state !== "failed") return null;
+    const time = formatDurationMs(summary.durationMs);
+    const label = summary.state === "failed" ? `Failed · ${summary.failed} failed` : `Complete · ${summary.complete}/${summary.total}`;
+    return { state: summary.state, label: time ? `${label} · ${time}` : label };
+  });
+
+  private previousRunState: RunState | null = null;
+  private liveTimeTimer: ReturnType<typeof setInterval> | null = null;
+  private runResultTimer: ReturnType<typeof setTimeout> | null = null;
+  private outOfViewTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** True once the first Mermaid node has rendered, so we fit the view once. */
   private hasFitInitialView = false;
@@ -1064,7 +1216,7 @@ export class GraphCanvasComponent implements AfterViewInit {
           if (element.closest(`.${NODE_DECORATION_CLASS}`)) {
             return false;
           }
-          if (element.closest(`.${NODE_ICON_CLASS}`)) {
+          if (element.closest(`.${NODE_ICON_CLASS}, .${NODE_TIME_CLASS}, .${GROUP_TIME_CLASS}, .${NODE_FAR_CLASS}`)) {
             return false;
           }
         }
@@ -1085,6 +1237,9 @@ export class GraphCanvasComponent implements AfterViewInit {
       chartObserver.disconnect();
       this.clearReplayAnimationFrame();
       this.clearReplayAnimationTimer();
+      clearTimeout(this.runResultTimer ?? undefined);
+      clearTimeout(this.outOfViewTimer ?? undefined);
+      clearInterval(this.liveTimeTimer ?? undefined);
       this.mainGraphRenderToken++;
       this.cancelStructuralLayoutSettle();
       this.clearRenderedGraphHostSizeLock();
@@ -1092,6 +1247,27 @@ export class GraphCanvasComponent implements AfterViewInit {
     });
 
     effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
+
+    effect(() => {
+      const summary = this.runSummary();
+      untracked(() => this.trackRunState(summary));
+    });
+
+    effect(() => {
+      const scale = this.cameraState().scale;
+      const threshold = this.farZoomScale();
+      untracked(() => this.zoomBand.update((band) => nextZoomBand(band, scale, threshold)));
+    });
+
+    effect(() => {
+      const counting = (this.showTimes() || this.zoomBand() === "far") && this.activeNodes().some((node) => node.status === "running" && !!node.startedAt && node.durationMs == null);
+      untracked(() => this.syncLiveTimeTimer(counting));
+    });
+
+    effect(() => {
+      const outOfView = this.graphOutOfView();
+      untracked(() => this.scheduleOutOfViewPrompt(outOfView));
+    });
 
     effect(() => {
       if (!this.viewReady()) return;
@@ -1432,7 +1608,8 @@ export class GraphCanvasComponent implements AfterViewInit {
     const toneClass = toToneClass(style?.tone);
     const toneAttribute = toneClass ? ` ${toneClass}` : "";
     const icon = style?.icon && readIconContent(style.icon) ? `<span class='${NODE_ICON_CLASS}${toneAttribute}'></span>` : "";
-    const text = `${icon}${this.escapeMermaidString(title)}`;
+    const timeSlot = this.showTimes() ? `<span class='${NODE_TIME_CLASS}'></span>` : "";
+    const text = `${icon}${this.escapeMermaidString(title)}${timeSlot}`;
     const chip = style?.chip ? `<span class='${NODE_CHIP_CLASS}${toneAttribute}'>${this.escapeMermaidString(this.escapeHtml(style.chip))}</span>` : "";
     const line = subtitle?.trim();
     const detail = line ? this.highlightPlaceholders(this.escapeMermaidString(this.escapeHtml(line))) : "";
@@ -1459,6 +1636,148 @@ export class GraphCanvasComponent implements AfterViewInit {
       slot.classList.add(MATERIAL_ICON_FONT_CLASS);
       slot.textContent = content.name;
     }
+  }
+
+  /**
+   * Writes a step's time into the slot its label reserved.
+   *
+   * VALUE: Only the slot's text changes, never the node's size, so a time that
+   * appears or counts up cannot move the layout. A slot that already shows this
+   * text is left alone.
+   */
+  private applyNodeTime(nodeElement: Element, node: MermaidRuntime.Node, nowMs: number): void {
+    const slot = nodeElement.querySelector<HTMLElement>(`.${NODE_TIME_CLASS}`);
+    if (!slot) return;
+    const text = formatDurationMs(getLiveNodeTimeMs(node, nowMs));
+    if (slot.textContent !== text) slot.textContent = text;
+  }
+
+  /**
+   * Gives a node the large one-line text it shows when zoomed far out.
+   *
+   * PURPOSE: At far zoom the label is too small to read. This text replaces it, and
+   * it is sized in CSS from the zoom (see the `.mr-node-far` rule), so it stays about
+   * the same size on screen at any zoom.
+   *
+   * VALUE: Idempotent and layout-free: one SVG `<text>` per node, created once, then
+   * only its text changes. How big it may grow is capped by the node's own size, so a
+   * long host text shrinks instead of overflowing.
+   */
+  private applyFarLabel(nodeElement: Element, node: MermaidRuntime.Node, nowMs: number): void {
+    if (this.farZoomScale() === null) return;
+    const text = resolveFarLabel(node, nowMs, this.farLabel());
+    let label = nodeElement.querySelector<SVGTextElement>(`:scope > text.${NODE_FAR_CLASS}`);
+    if (!label) {
+      label = nodeElement.ownerDocument.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+      label.classList.add(NODE_FAR_CLASS);
+      nodeElement.appendChild(label);
+    }
+    if (label.textContent !== text) label.textContent = text;
+    const box = this.readNodeShapeBox(nodeElement);
+    if (!box) return;
+    const cap = Math.min(box.height * FAR_LABEL_HEIGHT_SHARE, (box.width * FAR_LABEL_WIDTH_SHARE) / (Math.max(text.length, 1) * FAR_LABEL_CHAR_WIDTH_RATIO));
+    label.style.setProperty("--mr-far-cap", `${cap.toFixed(1)}px`);
+  }
+
+  /** Size of a node's drawn shape in scene units, or null when it cannot be measured. */
+  private readNodeShapeBox(nodeElement: Element): { width: number; height: number } | null {
+    const shape = nodeElement.querySelector<SVGGraphicsElement>(".label-container, rect, polygon, path");
+    if (!shape) return null;
+    try {
+      const box = shape.getBBox();
+      return box.width > 0 && box.height > 0 ? { width: box.width, height: box.height } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Draws each group's time as a small pill to the right of its title.
+   *
+   * PURPOSE: A group's time is the span of its steps (see `measureGroupTimeMs`), so
+   * it cannot be part of the title in the Mermaid source without a re-render on
+   * every change.
+   *
+   * VALUE: Idempotent and layout-free: the pill is an SVG element in the raised
+   * title layer, created once per title and updated in place, and removed again
+   * when the group has no time.
+   */
+  private applyGroupTimes(nowMs: number): void {
+    const host = this.readRenderedGraphHost();
+    if (!host) return;
+    const groups = this.activeGroups() ?? [];
+    if (!this.showTimes() || groups.length === 0) {
+      host.querySelectorAll(`.${GROUP_TIME_CLASS}`).forEach((pill) => pill.remove());
+      return;
+    }
+    const nodesById = new Map(this.activeNodes().map((node) => [node.id, node]));
+    for (const group of groups) {
+      const alias = this.groupAliasMap().get(group.id);
+      const label = alias ? host.querySelector<SVGGElement>(`g.cluster-label[data-mr-group-label-for$="-${alias}"]`) : null;
+      if (!label) continue;
+      const members = group.nodeIds.map((id) => nodesById.get(id)).filter((node): node is MermaidRuntime.Node => !!node);
+      const text = formatDurationMs(measureGroupTimeMs(members, nowMs));
+      this.drawGroupTime(label, text);
+    }
+  }
+
+  /** Creates, updates or removes the time pill of one group title. */
+  private drawGroupTime(label: SVGGElement, text: string): void {
+    let pill = label.querySelector<SVGGElement>(`:scope > .${GROUP_TIME_CLASS}`);
+    const backdrop = label.querySelector<SVGRectElement>(":scope > rect.mr-group-label-backdrop");
+    if (!text || !backdrop) {
+      pill?.remove();
+      return;
+    }
+    if (!pill) {
+      pill = label.ownerDocument.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
+      pill.classList.add(GROUP_TIME_CLASS);
+      pill.append(label.ownerDocument.createElementNS(SVG_NAMESPACE, "rect"), label.ownerDocument.createElementNS(SVG_NAMESPACE, "text"));
+      pill.firstElementChild!.classList.add("mr-group-label-backdrop");
+      label.appendChild(pill);
+    }
+    const [box, caption] = [pill.firstElementChild as SVGRectElement, pill.lastElementChild as SVGTextElement];
+    const height = backdrop.height.baseVal.value;
+    const fontSize = height * GROUP_TIME_FONT_RATIO;
+    const width = text.length * fontSize * GROUP_TIME_CHAR_WIDTH_RATIO + 2 * GROUP_TIME_PADDING_X_PX;
+    const x = backdrop.x.baseVal.value + backdrop.width.baseVal.value + GROUP_TIME_GAP_PX;
+    const y = backdrop.y.baseVal.value;
+    box.setAttribute("x", String(x));
+    box.setAttribute("y", String(y));
+    box.setAttribute("width", String(width));
+    box.setAttribute("height", String(height));
+    caption.setAttribute("x", String(x + width / 2));
+    caption.setAttribute("y", String(y + height / 2));
+    caption.setAttribute("font-size", String(fontSize));
+    if (caption.textContent !== text) caption.textContent = text;
+  }
+
+  /**
+   * Counts running steps' times up once a second.
+   *
+   * VALUE: Runs only while a shown time is counting (a running step with a
+   * `startedAt` and no recorded duration), and updates text only.
+   */
+  private syncLiveTimeTimer(counting: boolean): void {
+    if (!counting) {
+      clearInterval(this.liveTimeTimer ?? undefined);
+      this.liveTimeTimer = null;
+      return;
+    }
+    if (this.liveTimeTimer !== null) return;
+    this.liveTimeTimer = setInterval(() => this.refreshTimes(), LIVE_TIME_REFRESH_MS);
+  }
+
+  /** Rewrites every visible time from the current clock, without touching anything else. */
+  private refreshTimes(): void {
+    const nowMs = Date.now();
+    for (const node of this.activeNodes()) {
+      const element = this.findNodeElement(node.id);
+      if (!element) continue;
+      this.applyNodeTime(element, node, nowMs);
+      this.applyFarLabel(element, node, nowMs);
+    }
+    this.applyGroupTimes(nowMs);
   }
 
   /**
@@ -1941,7 +2260,43 @@ export class GraphCanvasComponent implements AfterViewInit {
     this.internalContextMenuTarget.set(null);
   }
 
-  /** Re-center chip handler: resume follow and move to the active node. */
+  /**
+   * Notes a change in the run's state: shows the result banner and emits
+   * `runSettled` when a run settles, and hides the banner again when a new run starts.
+   */
+  private trackRunState(summary: ReturnType<typeof summariseRun>): void {
+    const previous = this.previousRunState;
+    this.previousRunState = summary.state;
+    if (summary.state !== "complete" && summary.state !== "failed") {
+      clearTimeout(this.runResultTimer ?? undefined);
+      this.runResultVisible.set(false);
+      return;
+    }
+    if (previous === null || previous === summary.state) return;
+    this.runResultVisible.set(true);
+    clearTimeout(this.runResultTimer ?? undefined);
+    this.runResultTimer = setTimeout(() => this.runResultVisible.set(false), RUN_RESULT_BANNER_MS);
+    this.runSettled.emit({ state: summary.state, summary });
+  }
+
+  /** Shows the "back to graph" prompt only after the graph has been out of view for a moment; hides it at once. */
+  private scheduleOutOfViewPrompt(outOfView: boolean): void {
+    clearTimeout(this.outOfViewTimer ?? undefined);
+    if (!outOfView) {
+      this.outOfViewPrompt.set(false);
+      return;
+    }
+    this.outOfViewTimer = setTimeout(() => this.outOfViewPrompt.set(true), OUT_OF_VIEW_PROMPT_DELAY_MS);
+  }
+
+  /** Banner button handler: brings the graph back, resumes follow, or hides a result. */
+  protected onBannerActivated(message: BannerMessage): void {
+    if (message.action === "fit") this.fitAll();
+    else if (message.action === "resume-follow") this.resumeFollow();
+    else this.runResultVisible.set(false);
+  }
+
+  /** Banner handler: resume follow and move to the active node. */
   protected resumeFollow(): void {
     this.followPaused.set(false);
     this.scheduleFollow();
@@ -2447,6 +2802,7 @@ export class GraphCanvasComponent implements AfterViewInit {
    * camera measures a stable layout and node label sizing never jumps.
    */
   private applyStatusClasses(): void {
+    const nowMs = Date.now();
     const currentId = this.currentNodeId();
     const suppressLivePulses = this.replayActive();
     const styles = this.effectiveStatusStyles();
@@ -2481,6 +2837,8 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.applySubgraphBadge(element, hasSubgraph);
       this.applyNodeBadge(element, this.decorations()[node.id]?.badge);
       this.applyNodeIcon(element, resolveNodeStyle(node, this.decorations()[node.id], this.nodeKinds()).icon);
+      this.applyNodeTime(element, node, nowMs);
+      this.applyFarLabel(element, node, nowMs);
 
       // Detect transitions and trigger the generic pulse animations
       const prevStatus = this.previousStatuses.get(node.id);
@@ -2492,6 +2850,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       }
       this.previousStatuses.set(node.id, node.status);
     }
+    this.applyGroupTimes(nowMs);
     // Keep connection lines styled based on target node states
     this.applyEdgeStatusClasses();
   }

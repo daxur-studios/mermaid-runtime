@@ -1,0 +1,18 @@
+<div class="mr-graph-banner" [class.mr-graph-banner--visible]="message() !== null" [attr.data-banner]="message()?.id ?? null">
+  @if (shown(); as current) {
+    <button
+      type="button"
+      class="mr-graph-banner__pill"
+      [class.mr-graph-banner__pill--success]="current.kind === 'success'"
+      [class.mr-graph-banner__pill--failure]="current.kind === 'failure'"
+      [attr.role]="current.action === 'dismiss' ? 'status' : null"
+      [tabindex]="message() === null ? -1 : 0"
+      (click)="activated.emit(current)"
+    >
+      <span class="mr-graph-banner__text">{{ current.text }}</span>
+      @if (current.actionLabel) {
+        <span class="mr-graph-banner__action">{{ current.actionLabel }}</span>
+      }
+    </button>
+  }
+</div>

@@ -25,6 +25,7 @@ export class WorkE2ePage {
   protected readonly longLabels = signal(false);
   protected readonly commands = signal(false);
   protected readonly shapes = signal(false);
+  protected readonly times = signal(false);
   protected readonly direction = signal<'TD' | 'LR'>('LR');
   protected readonly groupFlow = signal<'alternate' | 'same'>('alternate');
   protected readonly path = signal<string[]>([]);

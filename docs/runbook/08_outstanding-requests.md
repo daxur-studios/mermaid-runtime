@@ -163,3 +163,23 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 - **Change:** a step that has not started shows its icon and chip as grey at 50% opacity. Running and done keep the kind's tone. Failed turns the icon and chip red (`--app-color-fail`). Colour and opacity only, so the measured layout does not move. `!important` is needed because Mermaid's theme rules are scoped under the diagram id. Added the built-in `green` tone; the demo's assert kind now uses it.
 - **Not done:** swapping the glyph itself (check → ✕ on failure). It is possible, but the icon is drawn after render and a swap would need a second icon per kind; colour alone already separates the three states.
 - **Validation:** unit 78/78, e2e 20/20 (new: pending cues are dim, started cues are not), build OK, lab crops checked for pending, running and a forced failed class. The demo's SQL-timeout scenario did not reach a failed step in the probe, so the red look is checked with a forced class, not a real failure. Not committed.
+
+### Run banner, step times and far-zoom text (2026-10-07)
+
+Source: user request after the kinds work was committed; options and picks in [plan 13](../plans/13_run-banner-timing-and-far-zoom-options.md). Covers backlog items 1, 2, 3 and 6.
+
+- **Reset centres the graph** (item 2): `GraphCameraComponent.reset()` frames the content at 100% zoom, or at the fitted zoom when 100% does not fit. It falls back to the identity transform when nothing is measured.
+- **One banner at the top centre** (items 3 and 6): new `mr-graph-banner`, one message at a time, slides down and fades. It replaces the old follow-only re-center chip. Priority: run failed, run complete, host message (`banner` input), "Back to graph", "Re-center on running". Chosen by the pure `pickBannerMessage`.
+- **"Back to graph"**: shows after the graph has been out of view for 500 ms. Out of view means less than 10% overlap, measured against the smaller of the graph and the viewport, so a big graph filling the screen or a graph zoomed far out is never flagged. Computed from the camera and the cached content rectangle, with no DOM measuring while panning.
+- **Run result**: `summariseRun` reads the root graph's steps. Complete = nothing running or waiting and nothing failed (skipped counts as done). Failed = something failed and nothing is running. An unknown status counts as waiting. The banner stays 6 s, then a small pill (`Complete · 12/12 · 48 s`) stays in the top-right corner until the next run starts. `runSettled` is emitted once on the change, not for a run that is already finished when the graph first appears.
+- **Step and group times** (`showTimes`, off by default): a right-aligned time in the label, written after render into a slot the label reserves (so a tick never re-renders; checked by the generation counter). Group time is a pill beside the group title: the span from the first start to the last end, counting up while a member runs. A running step with `startedAt` and no duration counts up once a second, only while one exists. Steps that have not started show nothing.
+- **Far-zoom text** (`farZoomScale`, default 0.4, `null` turns it off; `farLabel` override): below the scale each node hides its label and shows one large line, `NN%` while running, its time when done, nothing before it starts. A `farLabel` string wins, an empty string shows nothing, null falls back. The size is set in CSS from the zoom and capped by the node's own size. It returns above 1.2 times the threshold, so it does not flicker at the edge.
+- **Demo**: the work page has a "Step times" checkbox and synthetic timings (the failing SQL wait took 30 s).
+- **Validation:** unit 115/115 (37 new), e2e 26/26 (6 new: banner and pill, failed run, panning away and Reset, times, times off, far zoom), build OK. Checked in the browser: "Back to graph" banner, complete banner and pill, step and group times, far-zoom times on the 240-step flow.
+- **Limits:**
+  - The run summary counts the root graph's own nodes, so in the compact-subflows view "6 of 6" counts phases, not the 24 steps inside them.
+  - Far text is capped by node size, so on a 240-step flow fitted to the screen it is small (nodes are only about 5 px tall there); it helps most in the middle zooms.
+  - The demo's SQL-timeout run shows the failed banner in e2e, but I have not looked at it in the browser.
+  - Not checked in the work app. The work app must send `startedAt`/`endedAt` or `durationMs`, and `showTimes` must be turned on.
+  - Not done: group tones, long-title clamping, a legend, a stadium shape.
+- Not committed.

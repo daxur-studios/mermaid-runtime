@@ -61,11 +61,36 @@ function buildLongTitle(step: StepDefinition): string {
   return `${step.title}: ${step.detail}${identifier}`;
 }
 
+/**
+ * Simulated milliseconds that one demo tick stands for.
+ *
+ * VALUE: Lets running steps show a counting-up time that matches the simulated clock.
+ */
+const SIM_MS_PER_TICK = 1000;
+
+/** Shortest synthetic step time, in milliseconds. */
+const MIN_STEP_MS = 700;
+
+/** How much a step's synthetic time can grow beyond the minimum, in steps of {@link STEP_MS_INCREMENT}. */
+const STEP_MS_VARIETY = 9;
+
+/** Size of one increment of synthetic step time, in milliseconds. */
+const STEP_MS_INCREMENT = 450;
+
+/** Time the failing SQL wait ran before it gave up, in milliseconds (matches its error text). */
+const TIMEOUT_STEP_MS = 30_000;
+
+/** Deterministic step time from its position, so the demo looks the same on every run. */
+function syntheticStepMs(phase: number, index: number): number {
+  return MIN_STEP_MS + ((phase * 7 + index * 13) % STEP_MS_VARIETY) * STEP_MS_INCREMENT;
+}
+
 /** Pure synthetic fixture; IDs stay stable across ticks, views, and environments. */
 export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick: number, view: DemoView, fail: boolean, longLabels = false, commands = false): MermaidRuntime.Graph {
   const nodes: MermaidRuntime.Node[] = [];
   const transitions: MermaidRuntime.Transition[] = [];
   const groups: MermaidRuntime.NodeGroup[] = [];
+  const anchorMs = Date.now() - tick * SIM_MS_PER_TICK;
   for (let trip = 0; trip < trips; trip++) {
     let previous: string | null = null;
     for (let phase = 0; phase < phases.length; phase++) {
@@ -78,7 +103,14 @@ export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick:
         const failed = fail && phase === 4 && index === 1 && tick >= 17;
         const blocked = fail && tick >= 17 && (phase > 4 || (phase === 4 && index > 1));
         const status = skipped ? 'skipped' : failed ? 'failed' : blocked ? 'undone' : tick >= start + 1 ? 'complete' : tick > start ? 'running' : 'undone';
+        const startedMs = anchorMs + start * SIM_MS_PER_TICK;
+        const stepMs = failed ? TIMEOUT_STEP_MS : syntheticStepMs(phase, index);
+        const finished = status === 'complete' || status === 'failed';
+        const timing = status === 'running' || finished
+          ? { startedAt: new Date(startedMs).toISOString(), ...(finished ? { endedAt: new Date(startedMs + stepMs).toISOString(), durationMs: stepMs } : {}) }
+          : {};
         return {
+          ...timing,
           id: `${phaseId}-step-${index}`, title: longLabels ? buildLongTitle(step) : step.title, subtitle: commands ? buildCommand(step) : null, type: step.type, status,
           detail: skipped ? 'Skipped: local-only preparation is ineligible in shared dev.' : blocked ? 'Blocked: the SQL cache wait failed. This synthetic scenario stops at the failure.' : step.detail,
           error: failed ? 'Synthetic timeout: no matching cache row after 30 seconds.' : null,
@@ -93,7 +125,12 @@ export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick:
           : childNodes.some(n => n.status === 'failed') ? 'failed'
           : childNodes.every(n => n.status === 'complete') ? 'complete'
           : childNodes.some(n => n.status === 'running' || n.status === 'complete') ? 'running' : 'undone';
-        nodes.push({ id: phaseId, title: definition.title, type: 'subflow', status,
+        const startedAts = childNodes.flatMap(n => (n.startedAt ? [n.startedAt] : [])).sort();
+        const endedAts = childNodes.flatMap(n => (n.endedAt ? [n.endedAt] : [])).sort();
+        const spanTiming = startedAts.length > 0
+          ? { startedAt: startedAts[0], ...(status === 'complete' || status === 'failed' ? { endedAt: endedAts[endedAts.length - 1], durationMs: Date.parse(endedAts[endedAts.length - 1]) - Date.parse(startedAts[0]) } : {}) }
+          : {};
+        nodes.push({ ...spanTiming, id: phaseId, title: definition.title, type: 'subflow', status,
           detail: `Trip ${trip + 1}: four steps. Double-click to inspect this invocation.`,
           subgraphLabel: definition.title, subgraph: { nodes: childNodes, transitions: childEdges },
           progressPercent: Math.round(childNodes.filter(n => n.status === 'complete' || n.status === 'skipped').length / 4 * 100),

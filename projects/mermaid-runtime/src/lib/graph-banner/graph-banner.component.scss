@@ -1,0 +1,63 @@
+:host {
+  display: block;
+  pointer-events: none;
+}
+
+// Slide distance and timing live here once so the in and out feel the same.
+$slide-distance: 14px;
+$slide-ms: 220ms;
+
+.mr-graph-banner {
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(-$slide-distance);
+  transition:
+    opacity $slide-ms ease,
+    transform $slide-ms ease;
+
+  &--visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mr-graph-banner__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 640px);
+  padding: 6px 14px;
+  border: 1px solid var(--mat-sys-outline-variant, rgba(255, 255, 255, 0.24));
+  border-radius: 999px;
+  background: var(--mat-sys-surface-container, #1f2229);
+  color: var(--mat-sys-on-surface, #e6e8ee);
+  font: inherit;
+  font-size: 0.78rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+
+  &--success {
+    border-color: var(--app-color-pass, #4caf50);
+    background: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
+  }
+
+  &--failure {
+    border-color: var(--app-color-fail, #f44336);
+    background: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
+  }
+
+  &:hover {
+    background: var(--mr-overlay-hover, rgba(255, 255, 255, 0.12));
+  }
+}
+
+// Only a visible banner takes clicks; the faded one must not block the canvas.
+.mr-graph-banner--visible .mr-graph-banner__pill {
+  pointer-events: auto;
+}
+
+.mr-graph-banner__action {
+  font-weight: 600;
+  color: var(--app-color-active, #5b9cf5);
+}

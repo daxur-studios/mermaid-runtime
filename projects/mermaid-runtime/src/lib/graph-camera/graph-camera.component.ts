@@ -50,6 +50,9 @@ const MAX_CAMERA_ZOOM = 4;
  */
 const ZOOM_WHEEL_SENSITIVITY = 0.0015;
 
+/** Zoom that "Reset" aims for: real size, as long as the graph fits at that size. */
+const RESET_ZOOM = 1;
+
 /** Multiplicative zoom step for the on-screen +/- buttons (one click). */
 const ZOOM_BUTTON_STEP = 1.2;
 
@@ -234,9 +237,16 @@ export class GraphCameraComponent {
     this.zoomFromCenter(1 / ZOOM_BUTTON_STEP);
   }
 
-  /** Reset to the identity transform (top-left, no zoom). */
+  /**
+   * Centre the graph at 100% zoom, or at the fitted zoom when 100% would not fit.
+   *
+   * VALUE: "Reset" lands on the graph, not on the top-left corner of an empty
+   * canvas. Without measured content it falls back to the identity transform.
+   */
   reset(): void {
-    this.animateCameraTo({ x: 0, y: 0, scale: 1 });
+    const content = this.measureContentRect();
+    if (content) this.frameRect(content, { maxScale: RESET_ZOOM });
+    else this.animateCameraTo({ x: 0, y: 0, scale: RESET_ZOOM });
   }
 
   /**

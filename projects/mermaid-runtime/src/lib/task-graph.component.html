@@ -28,12 +28,17 @@
   [subgraphResolver]="subgraphResolver()"
   [path]="path()"
   [followExecution]="followExecution()"
+  [banner]="banner()"
+  [showTimes]="showTimes()"
+  [farZoomScale]="farZoomScale()"
+  [farLabel]="farLabel()"
   [showDetail]="showInspector() && inspectorPlacement() === 'built-in'"
   (nodeSelected)="nodeSelected.emit($event)"
   (nodeContextMenu)="nodeContextMenu.emit($event)"
   (subgraphEntered)="subgraphEntered.emit($event)"
   (subgraphLeft)="subgraphLeft.emit($event)"
   (graphPathChange)="graphPathChange.emit($event)"
+  (runSettled)="runSettled.emit($event)"
 >
   <!-- Host-supplied viewport overlays (extra controls, minimap, legends).
        ngProjectAs is required here: a nested <ng-content> does not itself carry the `overlay`

@@ -25,10 +25,10 @@
       <div #mermaidHost class="graph-canvas__mermaid mermaid"></div>
     </mr-graph-camera>
 
-    @if (showRecenterChip()) {
-      <button type="button" class="graph-canvas__recenter" (click)="resumeFollow()">
-        Re-center on running
-      </button>
+    <mr-graph-banner class="graph-canvas__banner" [message]="bannerMessage()" (activated)="onBannerActivated($event)" />
+
+    @if (runPill(); as pill) {
+      <div class="graph-canvas__run-pill" [class.graph-canvas__run-pill--failed]="pill.state === 'failed'" data-run-pill>{{ pill.label }}</div>
     }
 
     @if (showBreadcrumb() && breadcrumbPlacement() === 'built-in' && breadcrumb().length > 0) {

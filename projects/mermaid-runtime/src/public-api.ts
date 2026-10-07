@@ -14,4 +14,8 @@ export * from './lib/graph-preview/graph-preview.utils';
 export * from './lib/graph-preview/status-styles';
 export * from './lib/task-graph-replay/task-graph-replay.component';
 export * from './lib/graph-camera-controls/graph-camera-controls.component';
+export * from './lib/graph-canvas/run-summary.utils';
+export { DEFAULT_FAR_ZOOM_SCALE, type ZoomBand } from './lib/graph-canvas/far-zoom.utils';
+export * from './lib/graph-banner/graph-banner.component';
+export type { BannerAction, BannerKind, BannerMessage, HostBannerMessage } from './lib/graph-banner/banner-message.utils';
 

@@ -7,6 +7,9 @@ import {
   type SubgraphNavEvent,
 } from './graph-canvas/graph-canvas.component';
 import { GraphInspectorComponent } from './graph-inspector/graph-inspector.component';
+import type { HostBannerMessage } from './graph-banner/banner-message.utils';
+import type { RunSettledEvent } from './graph-canvas/run-summary.utils';
+import { DEFAULT_FAR_ZOOM_SCALE } from './graph-canvas/far-zoom.utils';
 import type { MermaidRuntimeConfig } from './mermaid-theme';
 
 /**
@@ -223,6 +226,21 @@ export class TaskGraphComponent {
    * progresses.
    */
   readonly followExecution = input<boolean>(false);
+
+  /** A message of the host's own for the top-centre banner (see `GraphCanvasComponent.banner`). */
+  readonly banner = input<HostBannerMessage | null>(null);
+
+  /** Zoom below which nodes show one large line instead of their text (see `GraphCanvasComponent.farZoomScale`). */
+  readonly farZoomScale = input<number | null>(DEFAULT_FAR_ZOOM_SCALE);
+
+  /** Text for a node when zoomed far out (see `GraphCanvasComponent.farLabel`). */
+  readonly farLabel = input<((node: MermaidRuntime.Node) => string | null | undefined) | null>(null);
+
+  /** Shows step and group times (see `GraphCanvasComponent.showTimes`). */
+  readonly showTimes = input<boolean>(false);
+
+  /** Emits once when the run finishes (see `GraphCanvasComponent.runSettled`). */
+  readonly runSettled = output<RunSettledEvent>();
 
   /** Emits the real node id when a node is clicked. */
   readonly nodeSelected = output<string>();

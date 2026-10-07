@@ -118,24 +118,34 @@
   height: 100%;
 }
 
-// Shown only when follow is on but paused by a manual pan/zoom.
-.graph-canvas__recenter {
+// Top-centre banner: run result, "back to graph", "re-center on running", host text.
+.graph-canvas__banner {
   position: absolute;
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2;
-  padding: 6px 12px;
-  border: 1px solid var(--app-color-pass);
-  border-radius: 999px;
-  background: var(--app-color-pass-bg);
-  color: var(--mat-sys-on-surface);
-  font-size: 0.78rem;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+  max-width: calc(100% - 24px);
+}
 
-  &:hover {
-    background: var(--mr-overlay-hover);
+// Small result marker that stays after the banner has slid away.
+.graph-canvas__run-pill {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 3px 10px;
+  border: 1px solid var(--app-color-pass, #4caf50);
+  border-radius: 999px;
+  background: var(--app-color-pass-bg, rgba(76, 175, 80, 0.15));
+  color: var(--mat-sys-on-surface, #e6e8ee);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  pointer-events: none;
+
+  &--failed {
+    border-color: var(--app-color-fail, #f44336);
+    background: var(--app-color-fail-bg, rgba(244, 67, 54, 0.15));
   }
 }
 
@@ -437,6 +447,36 @@
 :host ::ng-deep .mermaid .node.failed span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon),
 :host ::ng-deep .mermaid .node.skipped span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon) {
   color: var(--mat-sys-on-surface) !important;
+}
+
+// Far-zoom node text: hidden up close; far out it replaces the node label. The size
+// is set from the zoom so it stays about the same on screen, capped per node by
+// --mr-far-cap (set from the node's own size).
+:host ::ng-deep .mermaid .mr-node-far {
+  display: none;
+  fill: var(--mat-sys-on-surface, #e6e8ee);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  font-size: min(calc(var(--mr-far-font, 16px) / var(--zoom-scale, 1)), var(--mr-far-cap, 40px));
+}
+
+:host([data-zoom-band='far']) ::ng-deep .mermaid .mr-node-far {
+  display: inline;
+}
+
+:host([data-zoom-band='far']) ::ng-deep .mermaid .node foreignObject {
+  opacity: 0;
+}
+
+// Group time pill, drawn beside the raised group title (shares the title pill's look).
+:host ::ng-deep .mermaid .mr-group-time text {
+  fill: var(--mat-sys-on-surface-variant, #94a3b8);
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 // ── Status-aware icon and chip ─────────────────────────────────────
