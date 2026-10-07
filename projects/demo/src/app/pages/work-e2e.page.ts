@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { GraphCanvasComponent, MermaidRuntime, NodeContextMenuEvent } from '@daxur-studios/mermaid-runtime';
+import { DEMO_NODE_KINDS, REFRESH_ICON } from '../demo-node-kinds';
 import { buildWorkDemo, DEMO_END, DemoEnvironment, DemoView } from '../work-demo-data';
 
 @Component({
@@ -33,14 +34,14 @@ export class WorkE2ePage {
   protected readonly depot = signal('North depot');
   protected readonly speed = signal(250);
   protected readonly graph = computed(() => buildWorkDemo(this.trips(), this.environment(), this.tick(), this.view(), this.fail(), this.longLabels(), this.commands()));
-  /** Demo mapping of step type to node shape: assertions are hexagons, SQL steps rounded, Kafka steps slanted. */
+  /** Demo kinds: assertions are teal hexagons, SQL steps rounded with a database icon, Kafka steps slanted violet. */
+  protected readonly nodeKinds = computed<Record<string, MermaidRuntime.NodeKindStyle>>(() => (this.shapes() ? DEMO_NODE_KINDS : {}));
+  /** One step overrides its kind: a polling SQL step gets a refresh icon and a "poll 5s" chip. */
   protected readonly decorations = computed<Record<string, MermaidRuntime.NodeDecoration>>(() => {
     if (!this.shapes()) return {};
-    const shapeByType: Record<string, NonNullable<MermaidRuntime.NodeDecoration['shape']>> = { assert: 'hexagon', SQL: 'rounded', Kafka: 'parallelogram' };
     const result: Record<string, MermaidRuntime.NodeDecoration> = {};
     for (const node of this.graph().nodes) {
-      const shape = node.type ? shapeByType[node.type] : undefined;
-      if (shape) result[node.id] = { shape };
+      if (node.type === 'SQL' && node.title.startsWith('Poll')) result[node.id] = { icon: REFRESH_ICON, chip: 'poll 5s', tone: 'amber' };
     }
     return result;
   });

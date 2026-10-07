@@ -137,3 +137,22 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 **Validation:** unit 68/68 (10 new), e2e 18/18 (1 new, `e2e/node-shapes.spec.ts`), library build OK, checked in the lab. Not committed.
 
 **Not done:** stadium and cylinder (path-drawn: need ring, status colour and progress support), the kind registry (shape = intent, chip = tool), group tones. Arrows Mermaid routes itself inside a group already meet the slanted edge.
+
+### Kind registry, icon, chip and tone (2026-10-06)
+
+**Plan:** [12 Node kinds](../plans/12_node-kind-registry-options.md). **User-reported:** a database step that polls and one that calls once should both be "database", with a second cue to tell them apart. The stacked-outline idea was rejected.
+
+**Change:**
+- `GraphCanvasComponent.nodeKinds` (and `TaskGraphComponent.nodeKinds`) maps a node's `type` to `{ shape, icon, chip, tone }`. A `decorations` entry still wins field by field; an empty string clears a kind's value (`resolveNodeStyle`, `node-kind.utils.ts`).
+- **Icon:** a Material icon name (needs the host's Material Icons font) or a full `<svg>` string. The label only reserves an empty slot; the icon is drawn into it after the render, so a host SVG never passes through the Mermaid source. The SVG is parsed and stripped of scripts, handlers, external references and fixed sizes first.
+- **Chip:** a pill on the command-line row (`poll 5s`, `psql`), plain text, escaped like the command line.
+- **Tone:** colours the chip and icon only, never the node fill, so status colours keep their meaning. Built-in names: `accent`, `violet`, `teal`, `amber`, `rose`, `slate` (`NODE_TONE_COLOURS`, re-colourable with `--mr-tone-<name>-colour`); a host adds its own with `.mr-tone-<name> { --mr-tone: ... }`.
+- **Demo:** the Large-flow lab checkbox is now **Kinds by step type**: assert is a teal hexagon with a tick, SQL a rounded node with a database icon and a `psql` chip, Kafka a violet parallelogram with a send icon and a `kafka` chip. "Poll SQL cache" overrides its kind with a refresh icon and an amber `poll 5s` chip.
+
+**Two bugs found and fixed on the way:**
+- Status styling (hover, running, done, failed) forced label text to the surface colour, which would have erased the chip and icon colours. The selectors now skip `.mr-node-chip` and `.mr-node-icon`.
+- Mermaid's own `.node path` rule recoloured the strokes inside the icon SVG to grey, whatever the tone. The icon's shapes now inherit from the icon (`themeCSS`), and an e2e check guards it.
+
+**Validation:** unit 78/78 (10 new), e2e 19/19 (1 new), library build OK, checked in the lab on zoomed node crops. Not committed.
+
+**Not done:** the cylinder (path-drawn: ring, status colour, progress), pre-made kinds with variants (database: query, poll, write) and a legend, group tones. A Material icon name was not run against a real Material font (the demo uses SVG icons). Not checked in the work app, which has its own CSS and fonts.

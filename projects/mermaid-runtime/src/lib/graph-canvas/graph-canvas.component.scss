@@ -259,8 +259,8 @@
   stroke-width: 3px !important;
 }
 
-// The subtitle and its {{placeholders}} keep their own colours (see NODE_LABEL_CSS).
-:host ::ng-deep .mermaid .node:hover span:not(.mr-node-subtitle):not(.mr-node-param) {
+// The subtitle, its {{placeholders}}, the chip and the icon keep their own colours (see NODE_LABEL_CSS).
+:host ::ng-deep .mermaid .node:hover span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon) {
   color: var(--mat-sys-on-surface) !important;
 }
 
@@ -431,11 +431,11 @@
   opacity: 0.5 !important;
 }
 
-:host ::ng-deep .mermaid .node.current span:not(.mr-node-subtitle):not(.mr-node-param),
-:host ::ng-deep .mermaid .node.running span:not(.mr-node-subtitle):not(.mr-node-param),
-:host ::ng-deep .mermaid .node.done span:not(.mr-node-subtitle):not(.mr-node-param),
-:host ::ng-deep .mermaid .node.failed span:not(.mr-node-subtitle):not(.mr-node-param),
-:host ::ng-deep .mermaid .node.skipped span:not(.mr-node-subtitle):not(.mr-node-param) {
+:host ::ng-deep .mermaid .node.current span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon),
+:host ::ng-deep .mermaid .node.running span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon),
+:host ::ng-deep .mermaid .node.done span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon),
+:host ::ng-deep .mermaid .node.failed span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon),
+:host ::ng-deep .mermaid .node.skipped span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon) {
   color: var(--mat-sys-on-surface) !important;
 }
 

@@ -11,6 +11,7 @@ import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, withNodeLabelLa
 import { ensureMermaidConfigured } from "../mermaid-config";
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
+import { readIconContent, resolveNodeStyle, toToneClass, type ResolvedNodeStyle } from "./node-kind.utils";
 import { LayoutStabilityTracker } from "./layout-stability";
 import { computeBackgroundPatternLevels, DEFAULT_PATTERN_GAP_PX } from "./background-pattern.utils";
 import { raiseGroupLabels } from "./group-label.utils";
@@ -265,6 +266,24 @@ const PROGRESS_TRACE_CHILD_CLASS = "mr-node-progress-trace--child";
  * hand-listing each overlay class in every status/hover/pulse rule.
  */
 const NODE_DECORATION_CLASS = "mr-node-decoration";
+
+/**
+ * Class of the empty slot a node label reserves for its icon.
+ *
+ * VALUE: The slot sits in the Mermaid label so the node is measured with room for
+ * the icon; the icon itself is drawn into it after the render, so a host's SVG
+ * never passes through the Mermaid source.
+ */
+const NODE_ICON_CLASS = "mr-node-icon";
+
+/** Class of the pill that shows a node kind's chip text. */
+const NODE_CHIP_CLASS = "mr-node-chip";
+
+/** Class Angular Material's icon font uses, added when an icon is a ligature name. */
+const MATERIAL_ICON_FONT_CLASS = "material-icons";
+
+/** Data attribute that remembers which icon string a slot already shows. */
+const NODE_ICON_KEY_ATTRIBUTE = "mrIcon";
 
 /**
  * Zoom cap when follow-execution frames the running nodes.
@@ -635,6 +654,15 @@ export class GraphCanvasComponent implements AfterViewInit {
 
   /** Per-node display overrides, keyed by real node id. */
   readonly decorations = input<Record<string, MermaidRuntime.NodeDecoration>>({});
+
+  /**
+   * How each kind of step looks, keyed by the node's `type`.
+   *
+   * VALUE: A host describes "database step" or "assertion" once (shape, icon, chip,
+   * tone) instead of decorating every node. A node's own {@link decorations} entry
+   * still wins, field by field.
+   */
+  readonly nodeKinds = input<Record<string, MermaidRuntime.NodeKindStyle>>({});
 
   /**
    * Status → visual-treatment overrides, merged over {@link DEFAULT_STATUS_STYLES}.
@@ -1036,6 +1064,9 @@ export class GraphCanvasComponent implements AfterViewInit {
           if (element.closest(`.${NODE_DECORATION_CLASS}`)) {
             return false;
           }
+          if (element.closest(`.${NODE_ICON_CLASS}`)) {
+            return false;
+          }
         }
         return true;
       });
@@ -1105,6 +1136,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.replayEvent();
       this.effectiveStatusStyles();
       this.decorations();
+      this.nodeKinds();
       this.graphStack();
       this.scheduleStatusClasses();
     });
@@ -1365,10 +1397,11 @@ export class GraphCanvasComponent implements AfterViewInit {
   }
 
   private buildNodeDefinitionLine(node: MermaidRuntime.Node, alias: string, decoration: MermaidRuntime.NodeDecoration | undefined): string {
-    const title = this.buildNodeLabel(decoration?.displayTitle ?? node.title, node.subtitle);
+    const style = resolveNodeStyle(node, decoration, this.nodeKinds());
+    const title = this.buildNodeLabel(decoration?.displayTitle ?? node.title, node.subtitle, style);
     const reservedPreview = this.showSubgraphPreview() && this.resolveSubgraph(node) ? this.buildReservedContentHtml("subgraph-preview") : "";
     const label = `${title}${reservedPreview}`;
-    switch (decoration?.shape) {
+    switch (style.shape) {
       case "diamond":
         return `  ${alias}{"${label}"}`;
       case "subroutine":
@@ -1395,10 +1428,37 @@ export class GraphCanvasComponent implements AfterViewInit {
    * The span uses single quotes because this HTML sits inside a double-quoted
    * Mermaid label.
    */
-  private buildNodeLabel(title: string, subtitle?: string | null): string {
-    const text = this.escapeMermaidString(title);
+  private buildNodeLabel(title: string, subtitle?: string | null, style?: ResolvedNodeStyle): string {
+    const toneClass = toToneClass(style?.tone);
+    const toneAttribute = toneClass ? ` ${toneClass}` : "";
+    const icon = style?.icon && readIconContent(style.icon) ? `<span class='${NODE_ICON_CLASS}${toneAttribute}'></span>` : "";
+    const text = `${icon}${this.escapeMermaidString(title)}`;
+    const chip = style?.chip ? `<span class='${NODE_CHIP_CLASS}${toneAttribute}'>${this.escapeMermaidString(this.escapeHtml(style.chip))}</span>` : "";
     const line = subtitle?.trim();
-    return line ? `${text}<span class='mr-node-subtitle'>${this.highlightPlaceholders(this.escapeMermaidString(this.escapeHtml(line)))}</span>` : text;
+    const detail = line ? this.highlightPlaceholders(this.escapeMermaidString(this.escapeHtml(line))) : "";
+    return chip || detail ? `${text}<span class='mr-node-subtitle'>${chip}${detail}</span>` : text;
+  }
+
+  /**
+   * Draws a node's icon into the slot its label reserved.
+   *
+   * VALUE: Idempotent: a slot that already shows this icon is left alone, so the
+   * status pass can call it on every tick without touching the DOM.
+   */
+  private applyNodeIcon(nodeElement: Element, icon: string | undefined): void {
+    const slot = nodeElement.querySelector<HTMLElement>(`.${NODE_ICON_CLASS}`);
+    if (!slot || !icon || slot.dataset[NODE_ICON_KEY_ATTRIBUTE] === icon) return;
+    const content = readIconContent(icon);
+    slot.dataset[NODE_ICON_KEY_ATTRIBUTE] = icon;
+    slot.classList.remove(MATERIAL_ICON_FONT_CLASS);
+    slot.replaceChildren();
+    if (!content) return;
+    if (content.kind === "svg") {
+      slot.append(content.element);
+    } else {
+      slot.classList.add(MATERIAL_ICON_FONT_CLASS);
+      slot.textContent = content.name;
+    }
   }
 
   /**
@@ -2420,6 +2480,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       if (hasSubgraph) element.classList.add(HAS_SUBGRAPH_CLASS);
       this.applySubgraphBadge(element, hasSubgraph);
       this.applyNodeBadge(element, this.decorations()[node.id]?.badge);
+      this.applyNodeIcon(element, resolveNodeStyle(node, this.decorations()[node.id], this.nodeKinds()).icon);
 
       // Detect transitions and trigger the generic pulse animations
       const prevStatus = this.previousStatuses.get(node.id);

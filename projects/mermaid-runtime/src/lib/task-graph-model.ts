@@ -102,6 +102,39 @@ export namespace MermaidRuntime {
     condition?: string | null;
   }
 
+  /** Outline shapes a node can be drawn with; see {@link NodeDecoration.shape}. */
+  export type NodeShape = 'rect' | 'rounded' | 'diamond' | 'subroutine' | 'hexagon' | 'parallelogram';
+
+  /**
+   * How one kind of step looks: its shape, an icon, a chip and a tone.
+   *
+   * PURPOSE: Let a host say once what, for example, a database step looks like,
+   * instead of building a {@link NodeDecoration} for every node of that kind.
+   *
+   * VALUE: The shape tells a reader the kind of step from far away; the icon and
+   * chip tell the variant (poll or single call) up close. Status keeps the node
+   * fill and ring, so a kind never competes with a status colour.
+   */
+  export interface NodeKindStyle {
+    shape?: NodeShape;
+    /**
+     * A glyph drawn before the title. Either a Material icon name (for example
+     * `'refresh'`, which needs the host to load the Material Icons font) or a
+     * complete `<svg>` string, which is cleaned before it is drawn and takes the
+     * text colour through `fill="currentColor"` or `stroke="currentColor"`.
+     */
+    icon?: string;
+    /** A short word shown as a pill beside the command line, for example `'poll 5s'`. */
+    chip?: string;
+    /**
+     * Colours the chip and icon. A name from the built-in set (`accent`, `violet`,
+     * `teal`, `amber`, `rose`, `slate`), or any name the host defines with a
+     * `.mr-tone-<name> { --mr-tone: <colour>; }` rule. Letters, digits and
+     * hyphens only; anything else is ignored.
+     */
+    tone?: string;
+  }
+
   /**
    * Per-node visual override supplied by the host.
    *
@@ -123,7 +156,13 @@ export namespace MermaidRuntime {
      * to the label like any other shape; the slanted ones lose a little text
      * width to their sides.
      */
-    shape?: 'rect' | 'rounded' | 'diamond' | 'subroutine' | 'hexagon' | 'parallelogram';
+    shape?: NodeShape;
+    /** Overrides the kind's icon for this node; see {@link NodeKindStyle.icon}. */
+    icon?: string;
+    /** Overrides the kind's chip for this node; see {@link NodeKindStyle.chip}. */
+    chip?: string;
+    /** Overrides the kind's tone for this node; see {@link NodeKindStyle.tone}. */
+    tone?: string;
     /**
      * A small corner dot the host can use for any per-node live cue (e.g. "this
      * node has an LLM call in flight") without the library knowing what the cue

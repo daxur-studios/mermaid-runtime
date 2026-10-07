@@ -65,6 +65,27 @@ export const NODE_LABEL_WRAP_WIDTH_PX = 200;
 export const NODE_LABEL_LINE_HEIGHT = 1.2;
 
 /**
+ * Built-in tone names and their colours, for the chip and icon of a node kind.
+ *
+ * VALUE: A host picks a tone by name (`tone: 'teal'`) and the colour follows the
+ * theme. Each can be re-coloured with `--mr-tone-<name>-colour`; a host adds its
+ * own name with a `.mr-tone-<name> { --mr-tone: <colour>; }` rule.
+ */
+export const NODE_TONE_COLOURS: Readonly<Record<string, string>> = {
+  accent: '#5b9cf5',
+  violet: '#a78bfa',
+  teal: '#2dd4bf',
+  amber: '#f5b84b',
+  rose: '#f472b6',
+  slate: '#94a3b8',
+};
+
+/** One `--mr-tone` rule per built-in tone, built from {@link NODE_TONE_COLOURS}. */
+const NODE_TONE_CSS = Object.entries(NODE_TONE_COLOURS)
+  .map(([name, colour]) => `.node .nodeLabel .mr-tone-${name} { --mr-tone: var(--mr-tone-${name}-colour, ${colour}); }`)
+  .join('\n');
+
+/**
  * CSS that shapes node-label text, given to Mermaid as `themeCSS`.
  *
  * PURPOSE: Mermaid measures each label before it draws the node box. Rules that
@@ -102,6 +123,42 @@ export const NODE_LABEL_CSS = `
   color: var(--mr-node-param-color, #e0a030);
   font-weight: 600;
 }
+.node .nodeLabel .mr-node-icon {
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 6px;
+  vertical-align: -0.22em;
+  overflow: hidden;
+  line-height: 1;
+  color: var(--mr-tone, currentColor);
+}
+.node .nodeLabel .mr-node-icon.material-icons {
+  font-size: 1.2em;
+}
+.node .nodeLabel .mr-node-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.node .nodeLabel .mr-node-icon svg:not([fill]) {
+  fill: currentColor;
+}
+.node .nodeLabel .mr-node-icon svg * {
+  fill: inherit;
+  stroke: inherit;
+  stroke-width: inherit;
+}
+.node .nodeLabel .mr-node-chip {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  color: var(--mr-tone, currentColor);
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+${NODE_TONE_CSS}
 `;
 
 /**

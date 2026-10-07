@@ -117,6 +117,9 @@ export class TaskGraphComponent {
   /** Per-node display overrides, keyed by real node id. */
   readonly decorations = input<Record<string, TaskGraphNodeDecoration>>({});
 
+  /** How each kind of step (by node `type`) looks: shape, icon, chip and tone. */
+  readonly nodeKinds = input<Record<string, MermaidRuntime.NodeKindStyle>>({});
+
   /**
    * Status → visual-treatment overrides, merged over the canvas defaults.
    *

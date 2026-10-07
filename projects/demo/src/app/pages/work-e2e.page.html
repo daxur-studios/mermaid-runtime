@@ -16,7 +16,7 @@
   <label class="check"><input type="checkbox" [ngModel]="motion()" (ngModelChange)="motion.set($event)"> Activity pulses</label>
   <label class="check"><input type="checkbox" [ngModel]="longLabels()" (ngModelChange)="longLabels.set($event)"> Long step names</label>
   <label class="check"><input type="checkbox" [ngModel]="commands()" (ngModelChange)="commands.set($event)"> Command lines</label>
-  <label class="check"><input type="checkbox" [ngModel]="shapes()" (ngModelChange)="shapes.set($event)"> Shapes by step type</label>
+  <label class="check"><input type="checkbox" [ngModel]="shapes()" (ngModelChange)="shapes.set($event)"> Kinds by step type</label>
   <label class="check"><input type="checkbox" [ngModel]="inspector()" (ngModelChange)="inspector.set($event)"> Step details</label>
 </section>
 <section class="runbar" aria-label="Simulation controls">
@@ -31,7 +31,7 @@
 <div class="graph-shell">
   <mr-graph-canvas #canvas
     [nodes]="graph().nodes" [transitions]="graph().transitions ?? null" [groups]="graph().groups ?? null"
-    [groupFlow]="groupFlow()" [decorations]="decorations()" [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
+    [groupFlow]="groupFlow()" [decorations]="decorations()" [nodeKinds]="nodeKinds()" [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
     [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()"
     (nodeContextMenu)="openMenu($event)" [showDetail]="inspector()"
     [followExecution]="follow()" [replayActive]="!motion()" [showSubgraphPreview]="false"
