@@ -146,7 +146,7 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 - `GraphCanvasComponent.nodeKinds` (and `TaskGraphComponent.nodeKinds`) maps a node's `type` to `{ shape, icon, chip, tone }`. A `decorations` entry still wins field by field; an empty string clears a kind's value (`resolveNodeStyle`, `node-kind.utils.ts`).
 - **Icon:** a Material icon name (needs the host's Material Icons font) or a full `<svg>` string. The label only reserves an empty slot; the icon is drawn into it after the render, so a host SVG never passes through the Mermaid source. The SVG is parsed and stripped of scripts, handlers, external references and fixed sizes first.
 - **Chip:** a pill on the command-line row (`poll 5s`, `psql`), plain text, escaped like the command line.
-- **Tone:** colours the chip and icon only, never the node fill, so status colours keep their meaning. Built-in names: `accent`, `violet`, `teal`, `amber`, `rose`, `slate` (`NODE_TONE_COLOURS`, re-colourable with `--mr-tone-<name>-colour`); a host adds its own with `.mr-tone-<name> { --mr-tone: ... }`.
+- **Tone:** colours the chip and icon only, never the node fill, so status colours keep their meaning. Built-in names: `accent`, `violet`, `teal`, `green`, `amber`, `rose`, `slate` (`NODE_TONE_COLOURS`, re-colourable with `--mr-tone-<name>-colour`); a host adds its own with `.mr-tone-<name> { --mr-tone: ... }`.
 - **Demo:** the Large-flow lab checkbox is now **Kinds by step type**: assert is a teal hexagon with a tick, SQL a rounded node with a database icon and a `psql` chip, Kafka a violet parallelogram with a send icon and a `kafka` chip. "Poll SQL cache" overrides its kind with a refresh icon and an amber `poll 5s` chip.
 
 **Two bugs found and fixed on the way:**
@@ -156,3 +156,10 @@ These were already listed elsewhere; collected here so the backlog is in one pla
 **Validation:** unit 78/78 (10 new), e2e 19/19 (1 new), library build OK, checked in the lab on zoomed node crops. Not committed.
 
 **Not done:** the cylinder (path-drawn: ring, status colour, progress), pre-made kinds with variants (database: query, poll, write) and a legend, group tones. A Material icon name was not run against a real Material font (the demo uses SVG icons). Not checked in the work app, which has its own CSS and fonts.
+
+### Status-aware icon and chip (2026-10-06, same day)
+
+- **User-reported:** green check icons on steps that had not started made the flow look already done.
+- **Change:** a step that has not started shows its icon and chip as grey at 50% opacity. Running and done keep the kind's tone. Failed turns the icon and chip red (`--app-color-fail`). Colour and opacity only, so the measured layout does not move. `!important` is needed because Mermaid's theme rules are scoped under the diagram id. Added the built-in `green` tone; the demo's assert kind now uses it.
+- **Not done:** swapping the glyph itself (check → ✕ on failure). It is possible, but the icon is drawn after render and a swap would need a second icon per kind; colour alone already separates the three states.
+- **Validation:** unit 78/78, e2e 20/20 (new: pending cues are dim, started cues are not), build OK, lab crops checked for pending, running and a forced failed class. The demo's SQL-timeout scenario did not reach a failed step in the probe, so the red look is checked with a forced class, not a real failure. Not committed.

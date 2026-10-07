@@ -46,8 +46,39 @@ test('step types render as their own shapes and the selected ring follows the ou
 /** Colour of the built-in `accent` tone, as the browser reports it. */
 const ACCENT_TONE_RGB = 'rgb(91, 156, 245)';
 
-/** Ticks to advance so some steps are done and one is running, which restyles label text. */
-const TICKS_BEFORE_STATUS_CHECK = 6;
+/** Ticks to advance so a SQL step has started and its label text is restyled by status. */
+const TICKS_BEFORE_STATUS_CHECK = 14;
+
+/** Opacity of an icon or chip on a step that has not started. */
+const PENDING_CUE_OPACITY = '0.5';
+
+test('icons look dim before a step starts and take their colour once it has', async ({ page }) => {
+  await page.goto('/large-flow');
+  await page.getByRole('combobox', { name: 'Flow size', exact: true }).selectOption({ label: '24 steps · 1 trip' });
+  await page.getByRole('combobox', { name: 'View', exact: true }).selectOption({ label: 'Grouped steps' });
+  await page.getByRole('checkbox', { name: 'Kinds by step type' }).check();
+  await waitForStableGraph(page);
+
+  const readCues = () =>
+    page.evaluate(() => {
+      const root = document.querySelector('.graph-canvas__mermaid:not(.graph-canvas__render-sandbox)') as HTMLElement;
+      return [...root.querySelectorAll('.mr-node-icon, .mr-node-chip')].map((cue) => ({
+        opacity: getComputedStyle(cue).opacity,
+        started: !!cue.closest('g.node')?.matches('.running, .done, .failed'),
+      }));
+    });
+
+  const before = await readCues();
+  expect(before.length, 'cues are drawn').toBeGreaterThan(0);
+  expect(before.every((cue) => cue.opacity === PENDING_CUE_OPACITY), 'every cue is dim before the run starts').toBe(true);
+
+  for (let tick = 0; tick < TICKS_BEFORE_STATUS_CHECK; tick++) await page.getByRole('button', { name: 'Advance tick' }).click();
+  await waitForStableGraph(page);
+  const after = await readCues();
+  const started = after.filter((cue) => cue.started);
+  expect(started.length, 'some steps have started').toBeGreaterThan(0);
+  expect(started.every((cue) => cue.opacity !== PENDING_CUE_OPACITY), 'started steps are not dimmed').toBe(true);
+});
 
 test('step kinds draw an icon and a toned chip that status colours do not overwrite', async ({ page }) => {
   const errors: string[] = [];
@@ -72,7 +103,12 @@ test('step kinds draw an icon and a toned chip that status colours do not overwr
       icons: slots.filter((slot) => slot.getBoundingClientRect().width > 0).length,
       untoned: slots.filter((slot) => getComputedStyle(slot.querySelector('svg')!.querySelector('path, ellipse, circle')!).stroke !== getComputedStyle(slot).color).length,
       outside: slots.filter((slot) => !inside(slot.getBoundingClientRect(), slot.closest('g.node')!.querySelector('.label-container')!.getBoundingClientRect())).length,
-      chips: chips.map((chip) => ({ text: chip.textContent, color: getComputedStyle(chip).color })),
+      chips: chips.map((chip) => ({
+        text: chip.textContent,
+        color: getComputedStyle(chip).color,
+        tone: getComputedStyle(chip).getPropertyValue('--mr-tone').trim(),
+        started: !!chip.closest('g.node')?.matches('.running, .done'),
+      })),
     };
   });
   expect(probe.slots, 'icons are drawn').toBeGreaterThan(0);
@@ -82,7 +118,7 @@ test('step kinds draw an icon and a toned chip that status colours do not overwr
   expect(probe.untoned, 'Mermaid node styling does not recolour the icon strokes').toBe(0);
   const texts = new Set(probe.chips.map((chip) => chip.text));
   expect(texts, 'kind chips and the per-node poll override').toEqual(new Set(['psql', 'kafka', 'poll 5s']));
-  expect(probe.chips.find((chip) => chip.text === 'psql')?.color, 'status styling keeps the tone colour').toBe(ACCENT_TONE_RGB);
-  expect(new Set(probe.chips.map((chip) => chip.color)).size, 'tones differ between kinds').toBeGreaterThan(1);
+  expect(probe.chips.find((chip) => chip.text === 'psql' && chip.started)?.color, 'status styling keeps the tone colour on a started step').toBe(ACCENT_TONE_RGB);
+  expect(new Set(probe.chips.map((chip) => chip.tone)).size, 'tones differ between kinds').toBeGreaterThan(1);
   expect(errors).toEqual([]);
 });

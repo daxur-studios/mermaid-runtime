@@ -75,6 +75,7 @@ export const NODE_TONE_COLOURS: Readonly<Record<string, string>> = {
   accent: '#5b9cf5',
   violet: '#a78bfa',
   teal: '#2dd4bf',
+  green: '#4ade80',
   amber: '#f5b84b',
   rose: '#f472b6',
   slate: '#94a3b8',

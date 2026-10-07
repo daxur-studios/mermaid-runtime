@@ -439,6 +439,24 @@
   color: var(--mat-sys-on-surface) !important;
 }
 
+// ── Status-aware icon and chip ─────────────────────────────────────
+// A step that has not started shows its icon and chip as dim grey, so a check
+// mark does not read as already passed. Running and done keep the kind's tone,
+// and failed turns red. `!important` is needed because Mermaid's own theme rules
+// are scoped under the diagram id. Colour and opacity only, so Mermaid's measured layout
+// is untouched.
+
+:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed):not(.skipped) .mr-node-icon,
+:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed):not(.skipped) .mr-node-chip {
+  color: var(--mat-sys-on-surface-variant, #94a3b8) !important;
+  opacity: 0.5;
+}
+
+:host ::ng-deep .mermaid .node.failed .mr-node-icon,
+:host ::ng-deep .mermaid .node.failed .mr-node-chip {
+  color: var(--app-color-fail, #f87171) !important;
+}
+
 // ── Shape-offset outline rings & progress trace ─────────────────────
 // The selected/current rings and the progress trace are separate SVG
 // elements (a `<rect>`/`<polygon>` or `<path>` sibling of the node's own

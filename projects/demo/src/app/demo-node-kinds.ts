@@ -22,7 +22,7 @@ export const SEND_ICON = strokeIcon('<path d="M10 14L21 3M21 3l-6.5 18-4-8-8-4z"
  * say which tool, the tone colours the chip and icon.
  */
 export const DEMO_NODE_KINDS: Record<string, MermaidRuntime.NodeKindStyle> = {
-  assert: { shape: 'hexagon', icon: CHECK_ICON, tone: 'teal' },
+  assert: { shape: 'hexagon', icon: CHECK_ICON, tone: 'green' },
   SQL: { shape: 'rounded', icon: DATABASE_ICON, chip: 'psql', tone: 'accent' },
   Kafka: { shape: 'parallelogram', icon: SEND_ICON, chip: 'kafka', tone: 'violet' },
 };

@@ -34,7 +34,7 @@ export class WorkE2ePage {
   protected readonly depot = signal('North depot');
   protected readonly speed = signal(250);
   protected readonly graph = computed(() => buildWorkDemo(this.trips(), this.environment(), this.tick(), this.view(), this.fail(), this.longLabels(), this.commands()));
-  /** Demo kinds: assertions are teal hexagons, SQL steps rounded with a database icon, Kafka steps slanted violet. */
+  /** Demo kinds: assertions are green hexagons, SQL steps rounded with a database icon, Kafka steps slanted violet. */
   protected readonly nodeKinds = computed<Record<string, MermaidRuntime.NodeKindStyle>>(() => (this.shapes() ? DEMO_NODE_KINDS : {}));
   /** One step overrides its kind: a polling SQL step gets a refresh icon and a "poll 5s" chip. */
   protected readonly decorations = computed<Record<string, MermaidRuntime.NodeDecoration>>(() => {

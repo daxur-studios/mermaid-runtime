@@ -128,7 +128,7 @@ export namespace MermaidRuntime {
     chip?: string;
     /**
      * Colours the chip and icon. A name from the built-in set (`accent`, `violet`,
-     * `teal`, `amber`, `rose`, `slate`), or any name the host defines with a
+     * `teal`, `green`, `amber`, `rose`, `slate`), or any name the host defines with a
      * `.mr-tone-<name> { --mr-tone: <colour>; }` rule. Letters, digits and
      * hyphens only; anything else is ignored.
      */
