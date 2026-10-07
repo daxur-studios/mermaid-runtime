@@ -346,6 +346,22 @@ const FOLLOW_MAX_ZOOM = 1.4;
 const DEFAULT_CAMERA_STATE: GraphCameraState = { x: 0, y: 0, scale: 1 };
 
 /**
+ * How far (px) the pointer may travel between press and release and still count
+ * as a click.
+ *
+ * VALUE: A pan drag ends in a click on the background; without this gate every
+ * pan would clear the selection. Matches the camera's own pan-start threshold
+ * in spirit, with a little slack for a shaky click.
+ */
+const CLICK_MAX_TRAVEL_PX = 5;
+
+/**
+ * Elements a background click must ignore, because they are controls or node
+ * links rather than empty graph space.
+ */
+const BACKGROUND_CLICK_IGNORE_SELECTOR = "a, button, input, select, textarea, mr-minimap, mr-graph-banner, .graph-canvas__run-pill";
+
+/**
  * How long (ms) the "run complete" or "run failed" banner stays before it slides away.
  *
  * VALUE: Long enough to read the counts and the time, short enough not to sit
@@ -846,6 +862,12 @@ export class GraphCanvasComponent implements AfterViewInit {
   /** Emits the real node id when a node is clicked. */
   readonly nodeSelected = output<string>();
 
+  /**
+   * Emits when a click on the empty background clears the selection. A host that
+   * owns `selectedNodeId` should set it back to null here.
+   */
+  readonly selectionCleared = output<void>();
+
   /** Emits the target node id and viewport-relative position on a node right-click. */
   readonly nodeContextMenu = output<NodeContextMenuEvent>();
 
@@ -913,6 +935,9 @@ export class GraphCanvasComponent implements AfterViewInit {
   protected readonly mermaidOptions = computed<MermaidRuntimeConfig>(() => withNodeLabelLayout(this.mermaidConfig() ?? buildMermaidRuntimeConfig(this.mermaidTheme(), DEFAULT_MERMAID_OPTIONS.startOnLoad ?? false)));
 
   private readonly internalSelectedNodeId = signal<string | null>(null);
+
+  /** Where the last pointer press landed, so a click that ends a drag can be told from a real click. */
+  private lastPointerDown: { x: number; y: number } | null = null;
 
   /**
    * Subgraph navigation stack. Empty = root graph; each frame is one level the
@@ -1038,6 +1063,18 @@ export class GraphCanvasComponent implements AfterViewInit {
     const nodes = this.activeNodes();
     return this.selectedNodeId() ?? this.internalSelectedNodeId() ?? this.currentNodeId() ?? nodes.find((node) => node.status === "running")?.id ?? nodes[0]?.id ?? null;
   });
+
+  /**
+   * The node the white selection ring is drawn on — only ever a node somebody
+   * picked (the host's `selectedNodeId`, or a click).
+   *
+   * PURPOSE: Keep "selected" and "currently running" visually distinct.
+   *
+   * VALUE: {@link effectiveSelectedNodeId} falls back to the running or first
+   * node so the inspector always has something to show; ringing that fallback made
+   * every newly active step look as if it had just been selected.
+   */
+  protected readonly highlightedNodeId = computed(() => this.selectedNodeId() ?? this.internalSelectedNodeId());
 
   /** The resolved selected node — exposed so projected chrome can render its detail. */
   readonly selectedNode = computed(() => {
@@ -1197,6 +1234,9 @@ export class GraphCanvasComponent implements AfterViewInit {
     const clickListener = (event: MouseEvent) => this.handleChartClick(event);
     const dblClickListener = (event: MouseEvent) => this.handleChartDblClick(event);
     const contextMenuListener = (event: MouseEvent) => this.handleChartContextMenu(event);
+    const pointerDownListener = (event: PointerEvent) => {
+      this.lastPointerDown = { x: event.clientX, y: event.clientY };
+    };
     const chartObserver = new MutationObserver((mutations) => {
       const hasRealMutations = mutations.some((m) => {
         const element = m.target instanceof Element ? m.target : m.target.parentElement;
@@ -1226,11 +1266,13 @@ export class GraphCanvasComponent implements AfterViewInit {
         this.onChartMutation();
       }
     });
+    host.addEventListener("pointerdown", pointerDownListener, true);
     host.addEventListener("click", clickListener, true);
     host.addEventListener("dblclick", dblClickListener, true);
     host.addEventListener("contextmenu", contextMenuListener, true);
     chartObserver.observe(host, { childList: true, subtree: true });
     this.destroyRef.onDestroy(() => {
+      host.removeEventListener("pointerdown", pointerDownListener, true);
       host.removeEventListener("click", clickListener, true);
       host.removeEventListener("dblclick", dblClickListener, true);
       host.removeEventListener("contextmenu", contextMenuListener, true);
@@ -1246,7 +1288,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.renderSandboxHost.remove();
     });
 
-    effect(() => this.scheduleSelectedNodeClass(this.effectiveSelectedNodeId()));
+    effect(() => this.scheduleSelectedNodeClass(this.highlightedNodeId()));
 
     effect(() => {
       const summary = this.runSummary();
@@ -1878,7 +1920,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       return;
     }
 
-    this.applySelectedNodeClass(this.effectiveSelectedNodeId());
+    this.applySelectedNodeClass(this.highlightedNodeId());
     const renderedGraphHost = this.readRenderedGraphHost();
     if (!renderedGraphHost?.querySelector(".node")) return;
     this.measureGroupFootprints(renderedGraphHost);
@@ -2397,12 +2439,30 @@ export class GraphCanvasComponent implements AfterViewInit {
 
     const linkElement = target.closest("a");
     const nodeId = linkElement ? this.readNodeIdFromLink(linkElement) : null;
-    if (!nodeId) return;
+    if (!nodeId) {
+      if (this.isBackgroundClick(target, event)) this.clearSelection();
+      return;
+    }
 
     event.preventDefault();
     event.stopPropagation();
     this.internalSelectedNodeId.set(nodeId);
     this.nodeSelected.emit(nodeId);
+  }
+
+  /** A click on empty graph space: inside the graph, not on a node or a control, and not the end of a drag. */
+  private isBackgroundClick(target: Element, event: MouseEvent): boolean {
+    if (!this.hostElement.nativeElement.contains(target)) return false;
+    if (target.closest(BACKGROUND_CLICK_IGNORE_SELECTOR)) return false;
+    const down = this.lastPointerDown;
+    return !down || Math.hypot(event.clientX - down.x, event.clientY - down.y) <= CLICK_MAX_TRAVEL_PX;
+  }
+
+  /** Drop the selection ring; tells the host only if something was actually selected. */
+  private clearSelection(): void {
+    const hadSelection = this.highlightedNodeId() !== null;
+    this.internalSelectedNodeId.set(null);
+    if (hadSelection) this.selectionCleared.emit();
   }
 
   /** Double-click a drillable node to enter its subgraph. */

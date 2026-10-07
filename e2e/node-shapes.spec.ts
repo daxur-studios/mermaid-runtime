@@ -32,7 +32,8 @@ test('step types render as their own shapes and the selected ring follows the ou
   expect(shapes.filter((shape) => shape.tag === 'polygon' && shape.points === PARALLELOGRAM_POINTS).length, 'Kafka steps are parallelograms').toBeGreaterThan(0);
   expect(shapes.filter((shape) => shape.tag === 'rect' && shape.rx > 0).length, 'SQL steps are rounded').toBeGreaterThan(0);
 
-  await page.locator('.graph-canvas__mermaid:not(.graph-canvas__render-sandbox) g.node').filter({ has: page.locator('polygon.label-container') }).first().click({ force: true });
+  await page.locator('.graph-canvas__mermaid:not(.graph-canvas__render-sandbox) g.node').filter({ has: page.locator('polygon.label-container') }).first().dispatchEvent('click');
+  await expect(page.locator('.graph-canvas__mermaid:not(.graph-canvas__render-sandbox) .mr-node-outline-selected'), 'ring is drawn after the click').toHaveCount(1);
   const ring = await page.evaluate(() => {
     const overlay = document.querySelector('.graph-canvas__mermaid:not(.graph-canvas__render-sandbox) .mr-node-outline-selected');
     return overlay ? { tag: overlay.tagName.toLowerCase(), points: overlay instanceof SVGPolygonElement ? overlay.points.length : 0 } : null;

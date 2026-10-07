@@ -33,7 +33,7 @@
   <mr-graph-canvas #canvas
     [nodes]="graph().nodes" [transitions]="graph().transitions ?? null" [groups]="graph().groups ?? null"
     [groupFlow]="groupFlow()" [decorations]="decorations()" [nodeKinds]="nodeKinds()" [showTimes]="times()" [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
-    [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()"
+    [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()" (selectionCleared)="selected.set(null)"
     (nodeContextMenu)="openMenu($event)" [showDetail]="inspector()"
     [followExecution]="follow()" [replayActive]="!motion()" [showSubgraphPreview]="false"
     rootLabel="Trip creation" (keydown.escape)="canvas.closeContextMenu()">

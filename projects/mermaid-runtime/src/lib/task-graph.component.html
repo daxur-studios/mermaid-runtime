@@ -34,6 +34,7 @@
   [farLabel]="farLabel()"
   [showDetail]="showInspector() && inspectorPlacement() === 'built-in'"
   (nodeSelected)="nodeSelected.emit($event)"
+  (selectionCleared)="selectionCleared.emit()"
   (nodeContextMenu)="nodeContextMenu.emit($event)"
   (subgraphEntered)="subgraphEntered.emit($event)"
   (subgraphLeft)="subgraphLeft.emit($event)"

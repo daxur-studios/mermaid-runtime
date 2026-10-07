@@ -245,6 +245,9 @@ export class TaskGraphComponent {
   /** Emits the real node id when a node is clicked. */
   readonly nodeSelected = output<string>();
 
+  /** Emits when a click on the empty background clears the selection (see `GraphCanvasComponent.selectionCleared`). */
+  readonly selectionCleared = output<void>();
+
   /** Emits the target node id and viewport-relative position on a node right-click. */
   readonly nodeContextMenu = output<NodeContextMenuEvent>();
 
