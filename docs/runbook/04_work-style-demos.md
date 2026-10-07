@@ -21,6 +21,8 @@ Run `npm run demo` from the repository root, then open [Work E2E](http://localho
 5. Run or advance the simulation. Kafka and SQL waits run together; the synthetic trip number appears before the GUID. Try **SQL timeout** to stop at the failed wait and inspect the error.
 6. Open Large-flow lab and choose 24, 120, or 240 total steps. Compare expanded views against compact subflows while adjusting update cadence, follow behavior, and pulses.
 
+7. Press **Random graph** (first control in the toolbar) to swap the trip flow for a generated one: groups of steps with forks, joins, arrows that skip a group, labelled arrows, skipped steps, long titles and steps with no kind. Pick a **Size** (small, medium, large) and run, fail (**A step fails**) and zoom it like the trip flow. The toolbar shows the **Seed**; type a seed back in to bring the same graph back, so a layout problem can be reported as "medium, seed 48213". **Back to trip demo** returns to the fixed flow. The generator is [random-demo-data.ts](../../projects/demo/src/app/random-demo-data.ts); [browser checks](../../e2e/random-graph.spec.ts) cover every view and size.
+
 The large fixture repeats independent trip flows in parallel; it is one workload shape, not a model of every large E2E run. The context panel shows one sample trip. Configuration uses ordinary inspector controls; there are no custom controls inside Mermaid nodes yet.
 
 ## Implementation notes

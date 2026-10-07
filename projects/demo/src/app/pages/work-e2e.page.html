@@ -3,14 +3,22 @@
   <p>{{ stress ? 'Compare expanded steps with compact subflows, then run status updates while panning and zooming.' : 'Legacy UI → Kafka + SQL → public API. Compare grouping, inspect steps, and navigate reusable flows.' }}</p>
 </section>
 <section class="toolbar" aria-label="Scenario controls">
-  <label>Environment <select [ngModel]="environment()" (ngModelChange)="environment.set($event)" [disabled]="locked()"><option value="local">Local sandbox</option><option value="dev">Shared dev</option></select></label>
-  @if (stress) {
+  <button class="primary" (click)="shuffleGraph()" title="Generate a different random graph to test layouts">Random graph</button>
+  @if (source() === 'random') {
+    <label>Size <select [ngModel]="randomSize()" (ngModelChange)="changeSize($event)"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+    <label>Seed <input type="number" min="0" step="1" [ngModel]="seed()" (change)="changeSeed($any($event.target).value)"></label>
+    <span class="muted">{{ flow().phases.length }} groups · {{ flow().steps.length }} steps</span>
+    <button (click)="showTripDemo()">Back to trip demo</button>
+  } @else {
+    <label>Environment <select [ngModel]="environment()" (ngModelChange)="environment.set($event)" [disabled]="locked()"><option value="local">Local sandbox</option><option value="dev">Shared dev</option></select></label>
+  }
+  @if (stress && source() === 'trip') {
     <label>Flow size <select [ngModel]="trips()" (ngModelChange)="trips.set($event); navigate([])" [disabled]="locked()"><option [ngValue]="1">24 steps · 1 trip</option><option [ngValue]="5">120 steps · 5 trips</option><option [ngValue]="10">240 steps · 10 trips</option></select></label>
   }
   <label>View <select [ngModel]="view()" (ngModelChange)="changeView($event)"><option value="subflows">Compact subflows</option><option value="grouped">Grouped steps</option><option value="flat">All steps</option></select></label>
   <label>Layout <select [ngModel]="direction()" (ngModelChange)="direction.set($event)"><option value="LR">Left to right</option><option value="TD">Top to bottom</option></select></label>
   <label>Group flow <select [ngModel]="groupFlow()" (ngModelChange)="groupFlow.set($event)"><option value="alternate">Alternate (snake)</option><option value="same">Same direction</option></select></label>
-  <label>Scenario <select [ngModel]="fail()" (ngModelChange)="fail.set($event)" [disabled]="locked()"><option [ngValue]="false">Successful trip</option><option [ngValue]="true">SQL timeout</option></select></label>
+  <label>Scenario <select [ngModel]="fail()" (ngModelChange)="fail.set($event)" [disabled]="locked()"><option [ngValue]="false">Successful trip</option><option [ngValue]="true">{{ source() === 'random' ? 'A step fails' : 'SQL timeout' }}</option></select></label>
   <label>Update cadence <select [ngModel]="speed()" (ngModelChange)="speed.set($event)" [disabled]="playing()"><option [ngValue]="500">2 / second</option><option [ngValue]="250">4 / second</option><option [ngValue]="100">10 / second</option></select></label>
   <label class="check"><input type="checkbox" [ngModel]="follow()" (ngModelChange)="follow.set($event)"> Follow execution</label>
   <label class="check"><input type="checkbox" [ngModel]="motion()" (ngModelChange)="motion.set($event)"> Activity pulses</label>
@@ -26,17 +34,17 @@
   <button (click)="reset()">Reset</button>
   <button (click)="canvas.goToDepth(0)" [disabled]="path().length === 0">Back to overview</button>
   <span class="outcome" role="status">{{ outcome() }}</span>
-  <span class="muted">{{ trips() * 24 }} total steps · {{ path().length ? '4 steps in subflow' : graph().nodes.length + ' overview nodes' }} · Tick {{ tick() }}</span>
+  <span class="muted">{{ totalSteps() }} total steps · {{ path().length ? (source() === 'random' ? 'inside a group' : '4 steps in subflow') : graph().nodes.length + ' overview nodes' }} · Tick {{ tick() }}</span>
   <span class="legend"><i class="done"></i> Complete <i class="active"></i> Running <i class="skipped"></i> Skipped <i class="failed"></i> Failed</span>
 </section>
 <div class="graph-shell">
   <mr-graph-canvas #canvas
     [nodes]="graph().nodes" [transitions]="graph().transitions ?? null" [groups]="graph().groups ?? null"
     [groupFlow]="groupFlow()" [decorations]="decorations()" [nodeKinds]="nodeKinds()" [showTimes]="times()" [(direction)]="direction" [path]="path()" (graphPathChange)="navigate($event)"
-    [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()" (selectionCleared)="selected.set(null)"
+    [selectedNodeId]="selected()" (nodeSelected)="selected.set($event); canvas.closeContextMenu()" (selectionCleared)="selected.set(null)" (renderSettled)="fitReplacedGraph(canvas)"
     (nodeContextMenu)="openMenu($event)" [showDetail]="inspector()"
     [followExecution]="follow()" [replayActive]="!motion()" [showSubgraphPreview]="false"
-    rootLabel="Trip creation" (keydown.escape)="canvas.closeContextMenu()">
+    [rootLabel]="source() === 'random' ? 'Random graph' : 'Trip creation'" (keydown.escape)="canvas.closeContextMenu()">
     @if (canvas.contextMenuTarget(); as target) {
       <div overlay class="context-actions" aria-label="Step actions" [style.--menu-x]="menu().x + 'px'" [style.--menu-y]="menu().y + 'px'">
         <strong>{{ target.title }}</strong>
@@ -55,11 +63,16 @@
           @if (node.progressPercent != null) { <label class="progress-label">Simulated progress {{ node.progressPercent }}%<progress max="100" [value]="node.progressPercent"></progress></label> }
           <small class="node-id">{{ node.id }}</small>
         }
-        <hr><h3>Trip parameters</h3>
-        <label>Depot <input type="text" [ngModel]="depot()" (ngModelChange)="depot.set($event)" [disabled]="locked()"></label>
-        <label class="check"><input type="checkbox" [ngModel]="headed()" (ngModelChange)="headed.set($event)" [disabled]="locked()"> Headed Playwright</label>
-        <small>Demo configuration only. Reset to edit after a run starts.</small>
-        <hr><h3>Captured context · sample trip</h3><pre>{{ context() }}</pre>
+        @if (source() === 'trip') {
+          <hr><h3>Trip parameters</h3>
+          <label>Depot <input type="text" [ngModel]="depot()" (ngModelChange)="depot.set($event)" [disabled]="locked()"></label>
+          <label class="check"><input type="checkbox" [ngModel]="headed()" (ngModelChange)="headed.set($event)" [disabled]="locked()"> Headed Playwright</label>
+          <small>Demo configuration only. Reset to edit after a run starts.</small>
+          <hr><h3>Captured context · sample trip</h3><pre>{{ context() }}</pre>
+        } @else {
+          <hr><h3>Random graph</h3>
+          <p>{{ randomSize() }} · seed {{ seed() }}. Type the seed back in to bring this graph back.</p>
+        }
         <p class="hint">Right-click a node for actions. Double-click a subflow to enter; use the breadcrumb to return.</p>
       </aside>
     }

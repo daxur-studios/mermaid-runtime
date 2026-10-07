@@ -88,6 +88,22 @@ export function selectVisibleNodeProgress(
   };
 }
 
+/** Text between the percentage and the time in a node's readout (for example `42% · 1m 05s`). */
+const READOUT_SEPARATOR = " · ";
+
+/**
+ * Joins a node's percentage and time into the one line its badge shows.
+ *
+ * VALUE: A running step shows both (`42% · 1m 05s`), a finished one just its time, and
+ * one with neither gets an empty string, which means "draw no badge".
+ */
+export function composeNodeReadout(percent: number | null, timeText: string): string {
+  const parts: string[] = [];
+  if (percent !== null) parts.push(`${percent}%`);
+  if (timeText) parts.push(timeText);
+  return parts.join(READOUT_SEPARATOR);
+}
+
 /** The progress badge's box, in the node shape's local coordinates. */
 export interface ProgressBadgeBox {
   readonly x: number;

@@ -81,6 +81,34 @@ test('icons look dim before a step starts and take their colour once it has', as
   expect(started.every((cue) => cue.opacity !== PENDING_CUE_OPACITY), 'started steps are not dimmed').toBe(true);
 });
 
+/** Colour of the built-in `green` tone, as the browser reports it: what a done assert tick shows. */
+const GREEN_TONE_RGB = 'rgb(74, 222, 128)';
+
+/** Zoom-out clicks that are enough to reach the far band from a fitted view. */
+const ZOOM_OUT_CLICKS = 8;
+
+test('a skipped step’s tick is grey, up close and far out, never the kind’s green', async ({ page }) => {
+  await page.goto('/work-e2e');
+  await page.getByRole('combobox', { name: 'Environment', exact: true }).selectOption('dev');
+  await page.getByRole('combobox', { name: 'View', exact: true }).selectOption({ label: 'Grouped steps' });
+  await page.getByRole('checkbox', { name: 'Kinds by step type' }).check();
+  await waitForStableGraph(page);
+
+  const node = page.locator('.graph-canvas__mermaid:not(.graph-canvas__render-sandbox) g.node').filter({ hasText: 'Assert seed ready' });
+  await expect(node, 'shared dev skips local preparation').toHaveClass(/\bskipped\b/);
+  const readNearCue = () => node.locator('.mr-node-icon').evaluate((icon) => ({ color: getComputedStyle(icon).color, opacity: getComputedStyle(icon).opacity }));
+  const near = await readNearCue();
+  expect(near.color, 'the tick is not green').not.toBe(GREEN_TONE_RGB);
+  expect(near.opacity, 'the tick is dimmed like a step that has not started').toBe(PENDING_CUE_OPACITY);
+
+  for (let click = 0; click < ZOOM_OUT_CLICKS; click++) await page.getByTitle('Zoom out').click();
+  await expect(page.locator('mr-graph-canvas')).toHaveAttribute('data-zoom-band', 'far');
+  const far = await node.locator('svg.mr-node-far-icon').evaluate((icon) => ({ color: getComputedStyle(icon).color, opacity: getComputedStyle(icon).opacity }));
+  expect(far.color, 'the far-zoom tick is not green').not.toBe(GREEN_TONE_RGB);
+  expect(far.color, 'the far-zoom tick matches the close-up one').toBe(near.color);
+  expect(far.opacity).toBe(PENDING_CUE_OPACITY);
+});
+
 test('step kinds draw an icon and a toned chip that status colours do not overwrite', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(String(error)));

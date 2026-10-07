@@ -11,18 +11,19 @@ import { buildMermaidRuntimeConfig, readMermaidRuntimeConfigKey, withNodeLabelLa
 import { ensureMermaidConfigured } from "../mermaid-config";
 import { hashPreviewStructure, hashPreviewStatuses, resolvePreviewEdges, resolvePreviewStatusClass } from "../graph-preview/graph-preview.utils";
 import { buildTopStartOutlinePath, computeOutlinePerimeterLength, offsetPolygonGeometry, offsetRectGeometry, type OffsetShapeGeometry, type ShapePoint } from "./shape-offset.utils";
-import { readIconContent, resolveNodeStyle, toToneClass, type ResolvedNodeStyle } from "./node-kind.utils";
+import { readIconContent, resolveNodeStyle, toToneClass, type IconContent, type ResolvedNodeStyle } from "./node-kind.utils";
 import { LayoutStabilityTracker } from "./layout-stability";
 import { computeBackgroundPatternLevels, DEFAULT_PATTERN_GAP_PX } from "./background-pattern.utils";
 import { raiseGroupLabels } from "./group-label.utils";
-import { computeProgressBadgeBox, selectVisibleNodeProgress } from "./node-progress.utils";
+import { composeNodeReadout, computeProgressBadgeBox, selectVisibleNodeProgress } from "./node-progress.utils";
 import { buildGroupWrapLinks, chooseGroupsPerLine, computeGroupChainLevels, connectedGroupDirection, estimateGroupFootprint, findIndependentGroupIds, viewportAspectChanged, type ArrangementViewport, type GroupFootprint } from "./group-arrangement.utils";
 import { routeGroupCrossings, type GroupCrossingPlan } from "./group-edge-routing.utils";
 import { createMermaidRenderSandbox, ensureMermaidTemporaryRenderIsolation } from "../mermaid-render-sandbox";
 import { GraphBannerComponent } from "../graph-banner/graph-banner.component";
 import { pickBannerMessage, type BannerMessage, type HostBannerMessage } from "../graph-banner/banner-message.utils";
 import { isGraphOutOfView } from "../graph-camera/camera-visibility.utils";
-import { DEFAULT_FAR_ZOOM_SCALE, nextZoomBand, resolveFarLabel, type ZoomBand } from "./far-zoom.utils";
+import { computeFarLayout } from "./far-layout.utils";
+import { DEFAULT_FAR_ZOOM_SCALE, nextZoomBand, resolveFarLabel, shortenNodeName, type ZoomBand } from "./far-zoom.utils";
 import { formatDurationMs, getLiveNodeTimeMs, measureGroupTimeMs, summariseRun, type RunSettledEvent, type RunState } from "./run-summary.utils";
 
 export type GraphRenderPhase =
@@ -281,8 +282,8 @@ const NODE_DECORATION_CLASS = "mr-node-decoration";
  */
 const NODE_ICON_CLASS = "mr-node-icon";
 
-/** Class of the empty slot at a node's right edge that the step's time is written into. */
-const NODE_TIME_CLASS = "mr-node-time";
+/** Data attribute that remembers the text and size a badge was last drawn for, so an unchanged badge is left alone. */
+const BADGE_KEY_ATTRIBUTE = "mrReadout";
 
 /** Class of the pill drawn beside a group title to show the group's time. */
 const GROUP_TIME_CLASS = "mr-group-time";
@@ -295,17 +296,21 @@ const GROUP_TIME_CLASS = "mr-group-time";
  */
 const LIVE_TIME_REFRESH_MS = 1000;
 
-/** Class of the large one-line text a node shows when the viewer is zoomed far out. */
+/** Class of the group that holds what a node shows in its middle when the viewer is zoomed far out. */
 const NODE_FAR_CLASS = "mr-node-far";
 
-/** Share of a node's height its far text may fill at most. */
-const FAR_LABEL_HEIGHT_SHARE = 0.6;
+/**
+ * CSS custom property on a node's far group holding the font size (scene px) its content was laid out at.
+ *
+ * VALUE: The stylesheet divides the on-screen target size by this to shrink the content with the zoom.
+ */
+const FAR_BASE_FONT_PROPERTY = "--mr-far-base-font";
 
-/** Estimated width of one character of far text, as a share of its font size. */
-const FAR_LABEL_CHAR_WIDTH_RATIO = 0.62;
+/** Data attribute that remembers what a node's far group was last built from, so an unchanged one is left alone. */
+const FAR_KEY_ATTRIBUTE = "mrFarKey";
 
-/** Share of a node's width its far text may fill at most. */
-const FAR_LABEL_WIDTH_SHARE = 0.8;
+/** Text between the parts of a far group's content key; a control character no title or chip contains. */
+const FAR_KEY_SEPARATOR = "\u0001";
 
 /** Gap (px, scene units) between a group title's pill and its time pill. */
 const GROUP_TIME_GAP_PX = 6;
@@ -905,17 +910,19 @@ export class GraphCanvasComponent implements AfterViewInit {
   readonly banner = input<HostBannerMessage | null>(null);
 
   /**
-   * Shows each step's time at its right edge and each group's time beside its title.
+   * Shows each step's time in the badge on its bottom-right border (beside its percentage
+   * while it runs) and each group's time beside its title.
    *
-   * VALUE: Off by default, because it sets aside room in every node's label. The
-   * times come from the steps' `durationMs`, or `startedAt` and `endedAt`; a step that
-   * has not started shows nothing, a running step with a `startedAt` counts up.
+   * VALUE: Off by default. The times come from the steps' `durationMs`, or `startedAt`
+   * and `endedAt`; a step that has not started shows nothing, a running step with a
+   * `startedAt` counts up. Turning it on or off redraws no layout: badges are overlays.
    */
   readonly showTimes = input<boolean>(false);
 
   /**
-   * Zoom (scale) below which each node swaps its text for one large line, such as its
-   * time. Null turns the far text off.
+   * Zoom (scale) below which each node swaps its small text for something readable far
+   * out: its badge (percentage and time) grows, and a node with no badge shows a short
+   * form of its name. Null turns this off.
    *
    * VALUE: A far-out overview of hundreds of steps stays readable: it shows how long
    * each took, or how far along it is, instead of text too small to read.
@@ -923,9 +930,9 @@ export class GraphCanvasComponent implements AfterViewInit {
   readonly farZoomScale = input<number | null>(DEFAULT_FAR_ZOOM_SCALE);
 
   /**
-   * Text for a node when zoomed far out. Return a string to use it (an empty string
-   * shows nothing), or null to use the default (`NN%` while running, the time when
-   * done).
+   * Text for the middle of a node when zoomed far out. Return a string to use it (an empty
+   * string shows nothing), or null to use the default (nothing when the node's badge
+   * already shows a percentage or time, otherwise a short form of its title).
    */
   readonly farLabel = input<((node: MermaidRuntime.Node) => string | null | undefined) | null>(null);
 
@@ -1256,7 +1263,7 @@ export class GraphCanvasComponent implements AfterViewInit {
           if (element.closest(`.${NODE_DECORATION_CLASS}`)) {
             return false;
           }
-          if (element.closest(`.${NODE_ICON_CLASS}, .${NODE_TIME_CLASS}, .${GROUP_TIME_CLASS}, .${NODE_FAR_CLASS}`)) {
+          if (element.closest(`.${NODE_ICON_CLASS}, .${GROUP_TIME_CLASS}, .${NODE_FAR_CLASS}`)) {
             return false;
           }
         }
@@ -1299,6 +1306,12 @@ export class GraphCanvasComponent implements AfterViewInit {
       const scale = this.cameraState().scale;
       const threshold = this.farZoomScale();
       untracked(() => this.zoomBand.update((band) => nextZoomBand(band, scale, threshold)));
+    });
+
+    // Times are overlays, not part of the Mermaid source, so turning them on or off redraws them in place.
+    effect(() => {
+      this.showTimes();
+      untracked(() => this.refreshTimes());
     });
 
     effect(() => {
@@ -1650,8 +1663,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     const toneClass = toToneClass(style?.tone);
     const toneAttribute = toneClass ? ` ${toneClass}` : "";
     const icon = style?.icon && readIconContent(style.icon) ? `<span class='${NODE_ICON_CLASS}${toneAttribute}'></span>` : "";
-    const timeSlot = this.showTimes() ? `<span class='${NODE_TIME_CLASS}'></span>` : "";
-    const text = `${icon}${this.escapeMermaidString(title)}${timeSlot}`;
+    const text = `${icon}${this.escapeMermaidString(title)}`;
     const chip = style?.chip ? `<span class='${NODE_CHIP_CLASS}${toneAttribute}'>${this.escapeMermaidString(this.escapeHtml(style.chip))}</span>` : "";
     const line = subtitle?.trim();
     const detail = line ? this.highlightPlaceholders(this.escapeMermaidString(this.escapeHtml(line))) : "";
@@ -1681,44 +1693,158 @@ export class GraphCanvasComponent implements AfterViewInit {
   }
 
   /**
-   * Writes a step's time into the slot its label reserved.
+   * The line a node shows for how it is doing: its percentage while it reports progress,
+   * then its time, such as `42% · 1m 05s`. Empty when there is nothing to show.
    *
-   * VALUE: Only the slot's text changes, never the node's size, so a time that
-   * appears or counts up cannot move the layout. A slot that already shows this
-   * text is left alone.
+   * VALUE: The badge up close passes `withTime` from `showTimes`. The centred text when
+   * zoomed far out always includes the time, so a far-out overview shows how long each
+   * step took even for a host that never turned `showTimes` on. The percentage follows
+   * the progress-ring rules (not shown on finished steps).
    */
-  private applyNodeTime(nodeElement: Element, node: MermaidRuntime.Node, nowMs: number): void {
-    const slot = nodeElement.querySelector<HTMLElement>(`.${NODE_TIME_CLASS}`);
-    if (!slot) return;
-    const text = formatDurationMs(getLiveNodeTimeMs(node, nowMs));
-    if (slot.textContent !== text) slot.textContent = text;
+  private readNodeReadout(node: MermaidRuntime.Node, nowMs: number, withTime: boolean): string {
+    const percent = selectVisibleNodeProgress(node.status, this.readNodeProgressPercent(node.progressPercent), [], this.progressRings(), false).percent;
+    return composeNodeReadout(percent, withTime ? formatDurationMs(getLiveNodeTimeMs(node, nowMs)) : "");
   }
 
   /**
-   * Gives a node the large one-line text it shows when zoomed far out.
+   * Draws a node's badge: the small pill on its bottom-right border that holds its
+   * percentage and time together, and removes it when there is nothing to show.
    *
-   * PURPOSE: At far zoom the label is too small to read. This text replaces it, and
-   * it is sized in CSS from the zoom (see the `.mr-node-far` rule), so it stays about
-   * the same size on screen at any zoom.
+   * PURPOSE: One place on the node for "how far" and "how long", so a running step shows
+   * both at once instead of two things competing for the same corner. Zoomed far out the
+   * badge is hidden by CSS and the same text is drawn large in the middle (see applyFarLabel).
    *
-   * VALUE: Idempotent and layout-free: one SVG `<text>` per node, created once, then
-   * only its text changes. How big it may grow is capped by the node's own size, so a
-   * long host text shrinks instead of overflowing.
+   * VALUE: Layout-free: the badge is an SVG overlay, so a time that appears or counts up
+   * never changes a node's size. A badge that already shows this text is left alone, so
+   * the once-a-second time tick touches the DOM only when a digit changes.
+   */
+  private applyNodeReadout(nodeElement: Element, node: MermaidRuntime.Node, nowMs: number): void {
+    const text = this.readNodeReadout(node, nowMs, this.showTimes());
+    const existing = nodeElement.querySelector<SVGGElement>(`:scope > .${PROGRESS_BADGE_CLASS}`);
+    if (!text) {
+      existing?.remove();
+      return;
+    }
+    if (existing?.dataset[BADGE_KEY_ATTRIBUTE] === text) {
+      // Rings added after the badge would cover it, so keep it last.
+      if (nodeElement.lastElementChild !== existing) nodeElement.appendChild(existing);
+      return;
+    }
+    const shapeEl = this.findNodeShapeElement(nodeElement);
+    const geometry = shapeEl ? this.readOffsetGeometry(shapeEl, 0) : null;
+    if (!shapeEl || !geometry) {
+      existing?.remove();
+      return;
+    }
+
+    let badge = existing;
+    if (!badge) {
+      badge = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
+      badge.classList.add(PROGRESS_BADGE_CLASS, NODE_DECORATION_CLASS);
+      badge.setAttribute("pointer-events", "none");
+      // The pill needs the decoration class itself: status/hover rules match any `.node rect` without it.
+      const pillElement = document.createElementNS(SVG_NAMESPACE, "rect");
+      pillElement.classList.add(NODE_DECORATION_CLASS);
+      badge.appendChild(pillElement);
+      const textElement = document.createElementNS(SVG_NAMESPACE, "text");
+      textElement.setAttribute("text-anchor", "middle");
+      textElement.setAttribute("dominant-baseline", "central");
+      badge.appendChild(textElement);
+    }
+    if (nodeElement.lastElementChild !== badge) nodeElement.appendChild(badge);
+
+    const transform = shapeEl.getAttribute("transform");
+    if (transform) badge.setAttribute("transform", transform);
+    else badge.removeAttribute("transform");
+
+    const box = computeProgressBadgeBox(geometry, text);
+    const pill = badge.querySelector("rect")!;
+    pill.setAttribute("x", String(box.x));
+    pill.setAttribute("y", String(box.y));
+    pill.setAttribute("width", String(box.width));
+    pill.setAttribute("height", String(box.height));
+    pill.setAttribute("rx", String(box.height / 2));
+
+    const textElement = badge.querySelector("text")!;
+    textElement.setAttribute("x", String(box.x + box.width / 2));
+    textElement.setAttribute("y", String(box.y + box.height / 2));
+    textElement.textContent = text;
+    badge.dataset[BADGE_KEY_ATTRIBUTE] = text;
+  }
+
+  /**
+   * Gives a node what it shows in the middle when zoomed far out: its kind's icon and chip
+   * in a row, and its percentage and time large below.
+   *
+   * PURPOSE: At far zoom the label is too small to read, but what kind of step it is (a
+   * Kafka wait, a SQL poll) and how it is doing still are. The content is laid out at the
+   * largest size that fits the node (see computeFarLayout) and the stylesheet shrinks it
+   * from the zoom (the `.mr-node-far` rule), so it stays about the same size on screen. A
+   * step with no icon, chip, percentage or time shows a short form of its name instead,
+   * so it is not a blank box.
+   *
+   * VALUE: Layout-free and cheap to repeat: the group is rebuilt only when its content
+   * changes, so the once-a-second time tick touches the DOM only when a digit changes.
    */
   private applyFarLabel(nodeElement: Element, node: MermaidRuntime.Node, nowMs: number): void {
     if (this.farZoomScale() === null) return;
-    const text = resolveFarLabel(node, nowMs, this.farLabel());
-    let label = nodeElement.querySelector<SVGTextElement>(`:scope > text.${NODE_FAR_CLASS}`);
-    if (!label) {
-      label = nodeElement.ownerDocument.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-      label.classList.add(NODE_FAR_CLASS);
-      nodeElement.appendChild(label);
-    }
-    if (label.textContent !== text) label.textContent = text;
+    const style = resolveNodeStyle(node, this.decorations()[node.id], this.nodeKinds());
+    const readout = resolveFarLabel(node, this.readNodeReadout(node, nowMs, true), this.farLabel());
+    const chip = style.chip ?? "";
+    const key = [readout, chip, style.icon ?? "", style.tone ?? "", node.title].join(FAR_KEY_SEPARATOR);
+    const existing = nodeElement.querySelector<SVGGElement>(`:scope > g.${NODE_FAR_CLASS}`);
+    if (existing?.dataset[FAR_KEY_ATTRIBUTE] === key) return;
     const box = this.readNodeShapeBox(nodeElement);
     if (!box) return;
-    const cap = Math.min(box.height * FAR_LABEL_HEIGHT_SHARE, (box.width * FAR_LABEL_WIDTH_SHARE) / (Math.max(text.length, 1) * FAR_LABEL_CHAR_WIDTH_RATIO));
-    label.style.setProperty("--mr-far-cap", `${cap.toFixed(1)}px`);
+
+    const icon = style.icon ? readIconContent(style.icon) : null;
+    const line = !readout && !chip && !icon ? shortenNodeName(node.title) : readout;
+    const layout = computeFarLayout(box, { hasIcon: !!icon, chip, readout: line });
+    const group = existing ?? (nodeElement.ownerDocument.createElementNS(SVG_NAMESPACE, "g") as SVGGElement);
+    group.replaceChildren();
+    group.setAttribute("class", [NODE_FAR_CLASS, toToneClass(style.tone)].filter(Boolean).join(" "));
+    group.style.setProperty(FAR_BASE_FONT_PROPERTY, layout.baseFont.toFixed(2));
+
+    const kind = layout.kind;
+    if (kind && icon) group.append(this.buildFarIcon(icon, kind.iconX, kind.y, kind.iconSize));
+    if (kind && chip) {
+      const pill = nodeElement.ownerDocument.createElementNS(SVG_NAMESPACE, "rect");
+      pill.classList.add("mr-node-far-chip-bg", NODE_DECORATION_CLASS);
+      pill.setAttribute("x", String(kind.chipX));
+      pill.setAttribute("y", String(kind.y - kind.chipHeight / 2));
+      pill.setAttribute("width", String(kind.chipWidth));
+      pill.setAttribute("height", String(kind.chipHeight));
+      pill.setAttribute("rx", String(kind.chipHeight / 2));
+      group.append(pill, this.buildFarText("mr-node-far-chip", chip, kind.chipX + kind.chipWidth / 2, kind.y, kind.fontSize));
+    }
+    if (layout.readout) group.append(this.buildFarText("mr-node-far-readout", line, 0, layout.readout.y, layout.readout.fontSize));
+    group.dataset[FAR_KEY_ATTRIBUTE] = key;
+    if (!existing) nodeElement.appendChild(group);
+  }
+
+  /** One centred line of far text. */
+  private buildFarText(className: string, text: string, x: number, y: number, fontSize: number): SVGTextElement {
+    const element = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+    element.setAttribute("class", className);
+    element.setAttribute("x", String(x));
+    element.setAttribute("y", String(y));
+    element.setAttribute("font-size", String(fontSize));
+    element.textContent = text;
+    return element;
+  }
+
+  /** A node kind's icon sized and placed for the far content: a Material name as a centred glyph, an SVG as a nested copy. */
+  private buildFarIcon(icon: IconContent, x: number, centreY: number, size: number): SVGElement {
+    if (icon.kind === "svg") {
+      const svg = icon.element.cloneNode(true) as SVGSVGElement;
+      svg.classList.add("mr-node-far-icon");
+      svg.setAttribute("x", String(x));
+      svg.setAttribute("y", String(centreY - size / 2));
+      svg.setAttribute("width", String(size));
+      svg.setAttribute("height", String(size));
+      return svg;
+    }
+    return this.buildFarText(`mr-node-far-icon ${MATERIAL_ICON_FONT_CLASS}`, icon.name, x + size / 2, centreY, size);
   }
 
   /** Size of a node's drawn shape in scene units, or null when it cannot be measured. */
@@ -1816,7 +1942,7 @@ export class GraphCanvasComponent implements AfterViewInit {
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       if (!element) continue;
-      this.applyNodeTime(element, node, nowMs);
+      this.applyNodeReadout(element, node, nowMs);
       this.applyFarLabel(element, node, nowMs);
     }
     this.applyGroupTimes(nowMs);
@@ -2735,22 +2861,20 @@ export class GraphCanvasComponent implements AfterViewInit {
    * Creates, updates, or removes a node's progress trace: a `<path>` tracing
    * its shape (offset outward by {@link NODE_PROGRESS_TRACE_OFFSET_PX}),
    * revealed clockwise from its topmost point via `stroke-dasharray`/
-   * `stroke-dashoffset`, one fainter ring per running child further out, and
-   * the overall percentage as a small badge on the node's bottom-right border.
+   * `stroke-dashoffset`, and one fainter ring per running child further out. The
+   * percentage and time are written by {@link applyNodeReadout}.
    *
    * Callers pass only what should be drawn (see selectVisibleNodeProgress);
-   * a null `progressPercent` with no child rings removes everything.
+   * a null `progressPercent` with no child rings removes every ring.
    */
   private applyProgressTraceOverlay(nodeElement: Element, progressPercent: number | null, childPercents: readonly number[]): void {
     const existingPaths = Array.from(nodeElement.querySelectorAll<SVGPathElement>(`:scope > .${PROGRESS_TRACE_CLASS}`));
-    const existingBadge = nodeElement.querySelector<SVGGElement>(`:scope > .${PROGRESS_BADGE_CLASS}`);
 
     const hasProgress = progressPercent !== null || childPercents.length > 0;
     const shapeEl = hasProgress ? this.findNodeShapeElement(nodeElement) : null;
 
     if (!hasProgress || !shapeEl) {
       existingPaths.forEach((p) => p.remove());
-      existingBadge?.remove();
       return;
     }
 
@@ -2808,48 +2932,6 @@ export class GraphCanvasComponent implements AfterViewInit {
       path.style.strokeDashoffset = `${pathLength * (1 - config.percent / 100)}`;
       path.classList.toggle(PROGRESS_TRACE_CHILD_CLASS, config.isChild);
     }
-
-    // The overall percentage as a small badge on the node's bottom-right border.
-    // Per-child numbers stay in the inspector; the child rings show them visually.
-    const shapeGeometry = progressPercent !== null ? this.readOffsetGeometry(shapeEl, 0) : null;
-    if (!shapeGeometry) {
-      existingBadge?.remove();
-      return;
-    }
-
-    const label = `${progressPercent}%`;
-    const box = computeProgressBadgeBox(shapeGeometry, label);
-    let badge = existingBadge;
-    if (!badge) {
-      badge = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
-      badge.classList.add(PROGRESS_BADGE_CLASS, NODE_DECORATION_CLASS);
-      badge.setAttribute("pointer-events", "none");
-      // The pill needs the decoration class itself: status/hover rules match any `.node rect` without it.
-      const pillElement = document.createElementNS(SVG_NAMESPACE, "rect");
-      pillElement.classList.add(NODE_DECORATION_CLASS);
-      badge.appendChild(pillElement);
-      const text = document.createElementNS(SVG_NAMESPACE, "text");
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("dominant-baseline", "central");
-      badge.appendChild(text);
-    }
-    // Keep the badge above any ring added after it, so rings pass under it.
-    if (nodeElement.lastElementChild !== badge) nodeElement.appendChild(badge);
-
-    if (transform) badge.setAttribute("transform", transform);
-    else badge.removeAttribute("transform");
-
-    const pill = badge.querySelector("rect")!;
-    pill.setAttribute("x", String(box.x));
-    pill.setAttribute("y", String(box.y));
-    pill.setAttribute("width", String(box.width));
-    pill.setAttribute("height", String(box.height));
-    pill.setAttribute("rx", String(box.height / 2));
-
-    const text = badge.querySelector("text")!;
-    text.setAttribute("x", String(box.x + box.width / 2));
-    text.setAttribute("y", String(box.y + box.height / 2));
-    if (text.textContent !== label) text.textContent = label;
   }
 
   /**
@@ -2897,7 +2979,7 @@ export class GraphCanvasComponent implements AfterViewInit {
       this.applySubgraphBadge(element, hasSubgraph);
       this.applyNodeBadge(element, this.decorations()[node.id]?.badge);
       this.applyNodeIcon(element, resolveNodeStyle(node, this.decorations()[node.id], this.nodeKinds()).icon);
-      this.applyNodeTime(element, node, nowMs);
+      this.applyNodeReadout(element, node, nowMs);
       this.applyFarLabel(element, node, nowMs);
 
       // Detect transitions and trigger the generic pulse animations
@@ -3080,6 +3162,7 @@ export class GraphCanvasComponent implements AfterViewInit {
   private applyNodeProgressBars(): void {
     const visibility = this.progressRings();
     const showChildRings = this.childProgressRings();
+    const nowMs = Date.now();
     for (const node of this.activeNodes()) {
       const element = this.findNodeElement(node.id);
       if (!element) continue;
@@ -3088,6 +3171,8 @@ export class GraphCanvasComponent implements AfterViewInit {
         .filter((percent): percent is number => percent !== null);
       const visible = selectVisibleNodeProgress(node.status, this.readNodeProgressPercent(node.progressPercent), childPercents, visibility, showChildRings);
       this.applyProgressTraceOverlay(element, visible.percent, visible.childPercents);
+      this.applyNodeReadout(element, node, nowMs);
+      this.applyFarLabel(element, node, nowMs);
     }
   }
 

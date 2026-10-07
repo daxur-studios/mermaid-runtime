@@ -47,8 +47,11 @@ const phases: PhaseDefinition[] = [
 
 export const DEMO_END = 24;
 
+/** Tick at which the failing scenario's SQL wait gives up and the run stops. */
+export const DEMO_FAIL_TICK = 17;
+
 /** A synthetic CLI call for a step. Assert steps carry quotes and angle brackets, to check they are escaped. */
-function buildCommand(step: StepDefinition): string {
+export function buildCommand(step: Pick<StepDefinition, 'title' | 'type'>): string {
   const slug = step.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return step.type === 'assert'
     ? `tripcli assert ${slug} --expect "<public_guid>" --depot {{depotId}}`
@@ -56,7 +59,7 @@ function buildCommand(step: StepDefinition): string {
 }
 
 /** Long, realistic step names, so label wrapping can be checked. SQL steps also carry one unbreakable identifier. */
-function buildLongTitle(step: StepDefinition): string {
+export function buildLongTitle(step: Pick<StepDefinition, 'title' | 'type' | 'detail'>): string {
   const identifier = step.type === 'SQL' ? ' [trip_cache.public_guid_mapping_by_legacy_number]' : '';
   return `${step.title}: ${step.detail}${identifier}`;
 }
@@ -66,7 +69,7 @@ function buildLongTitle(step: StepDefinition): string {
  *
  * VALUE: Lets running steps show a counting-up time that matches the simulated clock.
  */
-const SIM_MS_PER_TICK = 1000;
+export const SIM_MS_PER_TICK = 1000;
 
 /** Shortest synthetic step time, in milliseconds. */
 const MIN_STEP_MS = 700;
@@ -85,6 +88,30 @@ function syntheticStepMs(phase: number, index: number): number {
   return MIN_STEP_MS + ((phase * 7 + index * 13) % STEP_MS_VARIETY) * STEP_MS_INCREMENT;
 }
 
+/**
+ * Collapses a phase's steps into one node that opens as a subflow.
+ *
+ * PURPOSE: The compact view shows a phase as a single node, so its status, progress and
+ * time have to be worked out from its steps.
+ *
+ * VALUE: One place owns that roll-up, so the trip fixture and the random graphs agree on
+ * what a running, failed or finished phase looks like.
+ */
+export function buildSubflowNode(id: string, title: string, detail: string, children: MermaidRuntime.Node[], childEdges: MermaidRuntime.Transition[]): MermaidRuntime.Node {
+  const status = children.every(n => n.status === 'skipped') ? 'skipped'
+    : children.some(n => n.status === 'failed') ? 'failed'
+    : children.every(n => n.status === 'complete' || n.status === 'skipped') ? 'complete'
+    : children.some(n => n.status === 'running' || n.status === 'complete') ? 'running' : 'undone';
+  const startedAts = children.flatMap(n => (n.startedAt ? [n.startedAt] : [])).sort();
+  const endedAts = children.flatMap(n => (n.endedAt ? [n.endedAt] : [])).sort();
+  const spanTiming = startedAts.length > 0
+    ? { startedAt: startedAts[0], ...(status === 'complete' || status === 'failed' ? { endedAt: endedAts[endedAts.length - 1], durationMs: Date.parse(endedAts[endedAts.length - 1]) - Date.parse(startedAts[0]) } : {}) }
+    : {};
+  return { ...spanTiming, id, title, type: 'subflow', status, detail, subgraphLabel: title, subgraph: { nodes: children, transitions: childEdges },
+    progressPercent: Math.round(children.filter(n => n.status === 'complete' || n.status === 'skipped').length / children.length * 100),
+  };
+}
+
 /** Pure synthetic fixture; IDs stay stable across ticks, views, and environments. */
 export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick: number, view: DemoView, fail: boolean, longLabels = false, commands = false): MermaidRuntime.Graph {
   const nodes: MermaidRuntime.Node[] = [];
@@ -100,8 +127,8 @@ export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick:
         // The first two synchronization steps are concurrent; their join starts next.
         const start = phase * 4 + (phase === 4 ? Math.max(0, index - 1) : index);
         const skipped = environment === 'dev' && phase === 1;
-        const failed = fail && phase === 4 && index === 1 && tick >= 17;
-        const blocked = fail && tick >= 17 && (phase > 4 || (phase === 4 && index > 1));
+        const failed = fail && phase === 4 && index === 1 && tick >= DEMO_FAIL_TICK;
+        const blocked = fail && tick >= DEMO_FAIL_TICK &&(phase > 4 || (phase === 4 && index > 1));
         const status = skipped ? 'skipped' : failed ? 'failed' : blocked ? 'undone' : tick >= start + 1 ? 'complete' : tick > start ? 'running' : 'undone';
         const startedMs = anchorMs + start * SIM_MS_PER_TICK;
         const stepMs = failed ? TIMEOUT_STEP_MS : syntheticStepMs(phase, index);
@@ -121,20 +148,7 @@ export function buildWorkDemo(trips: number, environment: DemoEnvironment, tick:
         ? [{ from: childNodes[0].id, to: childNodes[2].id }, { from: childNodes[1].id, to: childNodes[2].id }, { from: childNodes[2].id, to: childNodes[3].id }]
         : childNodes.slice(1).map((node, i) => ({ from: childNodes[i].id, to: node.id }));
       if (view === 'subflows') {
-        const status = childNodes.every(n => n.status === 'skipped') ? 'skipped'
-          : childNodes.some(n => n.status === 'failed') ? 'failed'
-          : childNodes.every(n => n.status === 'complete') ? 'complete'
-          : childNodes.some(n => n.status === 'running' || n.status === 'complete') ? 'running' : 'undone';
-        const startedAts = childNodes.flatMap(n => (n.startedAt ? [n.startedAt] : [])).sort();
-        const endedAts = childNodes.flatMap(n => (n.endedAt ? [n.endedAt] : [])).sort();
-        const spanTiming = startedAts.length > 0
-          ? { startedAt: startedAts[0], ...(status === 'complete' || status === 'failed' ? { endedAt: endedAts[endedAts.length - 1], durationMs: Date.parse(endedAts[endedAts.length - 1]) - Date.parse(startedAts[0]) } : {}) }
-          : {};
-        nodes.push({ ...spanTiming, id: phaseId, title: definition.title, type: 'subflow', status,
-          detail: `Trip ${trip + 1}: four steps. Double-click to inspect this invocation.`,
-          subgraphLabel: definition.title, subgraph: { nodes: childNodes, transitions: childEdges },
-          progressPercent: Math.round(childNodes.filter(n => n.status === 'complete' || n.status === 'skipped').length / 4 * 100),
-        });
+        nodes.push(buildSubflowNode(phaseId, definition.title, `Trip ${trip + 1}: four steps. Double-click to inspect this invocation.`, childNodes, childEdges));
         if (previous) transitions.push({ from: previous, to: phaseId });
         previous = phaseId;
       } else {

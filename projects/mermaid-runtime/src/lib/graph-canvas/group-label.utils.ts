@@ -20,10 +20,11 @@ export const GROUP_LABEL_BACKDROP_CLASS = "mr-group-label-backdrop";
 export const GROUP_LABEL_FOR_ATTRIBUTE = "data-mr-group-label-for";
 
 /**
- * CSS custom property on a raised label holding the centre of its text, in the label's own coordinates.
+ * CSS custom property on a raised label holding the point it grows about, in the label's own coordinates.
  *
  * VALUE: Lets the stylesheet enlarge the title, its pill and its time pill around one
- * shared point when zoomed far out, so they grow in place instead of drifting apart.
+ * shared point when zoomed far out, so they grow together instead of drifting apart.
+ * The point is the bottom centre of the pill, so a larger title grows upward, away from the group's nodes.
  */
 export const GROUP_LABEL_PIVOT_PROPERTY = "--mr-group-pivot";
 
@@ -54,6 +55,15 @@ const GROUP_LABEL_PADDING_X_PX = 8;
 const GROUP_LABEL_PADDING_Y_PX = 2;
 
 /**
+ * How far a group title is moved up from where Mermaid puts it, in scene px.
+ *
+ * VALUE: Mermaid sets the title inside the top of its group, where the first steps can
+ * touch it and, since steps are drawn above titles, cover its lower edge. Moving it up
+ * lets the pill straddle the group's top border instead.
+ */
+export const GROUP_LABEL_RAISE_PX = 8;
+
+/**
  * Moves every group (cluster) title in a rendered Mermaid flowchart into a
  * layer drawn above the arrows, and puts a pill behind each one.
  *
@@ -64,7 +74,8 @@ const GROUP_LABEL_PADDING_Y_PX = 2;
  * arrows and edge labels, and nodes still sit above titles.
  *
  * Transforms of the label's old ancestors (Mermaid leaves them empty today)
- * are folded into the label's own `transform`, so it does not move.
+ * are folded into the label's own `transform`, so it does not move, and the
+ * label is then lifted by {@link GROUP_LABEL_RAISE_PX}.
  * Idempotent: labels already raised are left alone.
  *
  * VALUE: Group titles stay readable however Mermaid routes arrows into a
@@ -88,7 +99,7 @@ export function raiseGroupLabels(container: Element): void {
       if (!label.textContent?.trim()) continue;
       const cluster = label.closest("g.cluster");
       if (cluster?.id) label.setAttribute(GROUP_LABEL_FOR_ATTRIBUTE, cluster.id);
-      label.setAttribute("transform", collectTransformsUpTo(label, root));
+      label.setAttribute("transform", `${collectTransformsUpTo(label, root)} translate(0, ${-GROUP_LABEL_RAISE_PX})`.trim());
       // Measure before moving: the label is laid out where Mermaid put it.
       const box = readLabelTextBox(label);
       const groupWidth = cluster?.querySelector<SVGRectElement>(":scope > rect")?.width.baseVal.value ?? 0;
@@ -144,7 +155,7 @@ function insertLabelBackdrop(label: SVGGElement, textBox: DOMRect, groupWidth: n
   backdrop.setAttribute("width", String(textBox.width + 2 * GROUP_LABEL_PADDING_X_PX));
   backdrop.setAttribute("height", String(textBox.height + 2 * GROUP_LABEL_PADDING_Y_PX));
   const pivotX = textBox.x + textBox.width / 2;
-  const pivotY = textBox.y + textBox.height / 2;
+  const pivotY = textBox.y + textBox.height + GROUP_LABEL_PADDING_Y_PX;
   label.style.setProperty(GROUP_LABEL_PIVOT_PROPERTY, `${pivotX}px ${pivotY}px`);
   if (groupWidth > 0) {
     const pillWidth = textBox.width + 2 * GROUP_LABEL_PADDING_X_PX + GROUP_LABEL_TIME_ALLOWANCE_PX;

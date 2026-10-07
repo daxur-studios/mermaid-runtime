@@ -1,4 +1,4 @@
-import { computeProgressBadgeBox, isSettledNodeStatus, selectVisibleNodeProgress } from './node-progress.utils';
+import { composeNodeReadout, computeProgressBadgeBox, isSettledNodeStatus, selectVisibleNodeProgress } from './node-progress.utils';
 import { offsetPolygonGeometry, offsetRectGeometry } from './shape-offset.utils';
 
 describe('node progress utils', () => {
@@ -47,5 +47,12 @@ describe('node progress utils', () => {
     const box = computeProgressBadgeBox(diamond, '64%');
     expect(box.x + box.width / 2).toBeCloseTo(75);
     expect(box.y + box.height / 2).toBeCloseTo(75);
+  });
+
+  it('shows a running step\'s percentage and time together, and a finished step\'s time alone', () => {
+    expect(composeNodeReadout(42, '1m 05s')).toBe('42% · 1m 05s');
+    expect(composeNodeReadout(null, '2.3 s')).toBe('2.3 s');
+    expect(composeNodeReadout(42, '')).toBe('42%');
+    expect(composeNodeReadout(null, '')).toBe('');
   });
 });

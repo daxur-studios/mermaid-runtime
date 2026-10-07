@@ -449,22 +449,69 @@
   color: var(--mat-sys-on-surface) !important;
 }
 
-// Far-zoom node text: hidden up close; far out it replaces the node label. The size
-// is set from the zoom so it stays about the same on screen, capped per node by
-// --mr-far-cap (set from the node's own size).
-:host ::ng-deep .mermaid .mr-node-far {
+// Far-zoom node content: hidden up close; far out it replaces the node label. The group holds
+// the kind's icon and chip in a row with the percentage and time below, laid out in the node's
+// own coordinates (centre at 0, 0) at the largest size that fits the node. It is shrunk about
+// the centre so its main text stays about --mr-far-font px tall on screen as the zoom drops, and
+// never grows past the size it was laid out at. --mr-far-base-font is that laid-out size.
+:host ::ng-deep .mermaid .node .mr-node-far {
   display: none;
-  fill: var(--mat-sys-on-surface, #e6e8ee);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-anchor: middle;
-  dominant-baseline: central;
   pointer-events: none;
-  font-size: min(calc(var(--mr-far-font, 16px) / var(--zoom-scale, 1)), var(--mr-far-cap, 40px));
+  transform: scale(min(1, calc(var(--mr-far-font, 16) / (var(--zoom-scale, 1) * var(--mr-far-base-font, 16)))));
+  text {
+    text-anchor: middle;
+    dominant-baseline: central;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
 }
 
-:host([data-zoom-band='far']) ::ng-deep .mermaid .mr-node-far {
+:host([data-zoom-band='far']) ::ng-deep .mermaid .node .mr-node-far {
   display: inline;
+}
+
+// The badge's text is drawn large in the middle instead, so it is hidden while far out.
+:host([data-zoom-band='far']) ::ng-deep .mermaid .node .mr-node-progress-badge {
+  display: none;
+}
+
+:host ::ng-deep .mermaid .node .mr-node-far-readout {
+  fill: var(--mat-sys-on-surface, #e6e8ee);
+  font-weight: 600;
+}
+
+:host ::ng-deep .mermaid .node .mr-node-far-chip {
+  fill: var(--mr-tone, var(--mat-sys-on-surface-variant, #94a3b8));
+  font-weight: 600;
+}
+
+:host ::ng-deep .mermaid .node .mr-node-far-chip-bg {
+  fill: color-mix(in srgb, var(--mr-tone, #94a3b8) 18%, transparent) !important;
+  stroke: none !important;
+}
+
+// A Material icon name is drawn as a glyph filled with the tone.
+:host ::ng-deep .mermaid .node text.mr-node-far-icon {
+  fill: var(--mr-tone, var(--mat-sys-on-surface-variant, #94a3b8)) !important;
+}
+
+// A host SVG icon is a nested copy that works exactly like the label's icon: the root takes the
+// tone as its colour, keeps its own fill/stroke attributes (a stroke-style icon has fill="none",
+// which must not be overridden or the icon fills in and loses its detail), and its shapes inherit
+// from the root. `!important` is needed because Mermaid's id-scoped `.node path` rules would
+// otherwise recolour the shapes.
+:host ::ng-deep .mermaid .node svg.mr-node-far-icon {
+  color: var(--mr-tone, var(--mat-sys-on-surface-variant, #94a3b8)) !important;
+}
+
+:host ::ng-deep .mermaid .node svg.mr-node-far-icon:not([fill]) {
+  fill: currentColor;
+}
+
+:host ::ng-deep .mermaid .node svg.mr-node-far-icon * {
+  fill: inherit !important;
+  stroke: inherit !important;
+  stroke-width: inherit !important;
 }
 
 :host([data-zoom-band='far']) ::ng-deep .mermaid .node foreignObject {
@@ -490,14 +537,14 @@
 }
 
 // ── Status-aware icon and chip ─────────────────────────────────────
-// A step that has not started shows its icon and chip as dim grey, so a check
-// mark does not read as already passed. Running and done keep the kind's tone,
-// and failed turns red. `!important` is needed because Mermaid's own theme rules
+// A step that has not started, or was skipped, shows its icon and chip as dim grey, so a
+// check mark does not read as passed when it never ran. Running and done keep the kind's
+// tone, and failed turns red. `!important` is needed because Mermaid's own theme rules
 // are scoped under the diagram id. Colour and opacity only, so Mermaid's measured layout
 // is untouched.
 
-:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed):not(.skipped) .mr-node-icon,
-:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed):not(.skipped) .mr-node-chip {
+:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed) .mr-node-icon,
+:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed) .mr-node-chip {
   color: var(--mat-sys-on-surface-variant, #94a3b8) !important;
   opacity: 0.5;
 }
@@ -505,6 +552,22 @@
 :host ::ng-deep .mermaid .node.failed .mr-node-icon,
 :host ::ng-deep .mermaid .node.failed .mr-node-chip {
   color: var(--app-color-fail, #f87171) !important;
+}
+
+// The far-zoom icon and chip follow the same states. They take their colour from --mr-tone, which
+// the kind's tone class also sets (with higher specificity), so the status states set it with
+// `!important`. Only the icon and chip are dimmed, not the percentage and time.
+:host ::ng-deep .mermaid .node:not(.running):not(.done):not(.failed) .mr-node-far {
+  --mr-tone: var(--mat-sys-on-surface-variant, #94a3b8) !important;
+  .mr-node-far-icon,
+  .mr-node-far-chip,
+  .mr-node-far-chip-bg {
+    opacity: 0.5;
+  }
+}
+
+:host ::ng-deep .mermaid .node.failed .mr-node-far {
+  --mr-tone: var(--app-color-fail, #f87171) !important;
 }
 
 // ── Shape-offset outline rings & progress trace ─────────────────────

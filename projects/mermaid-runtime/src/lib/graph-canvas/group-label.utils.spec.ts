@@ -1,4 +1,4 @@
-import { GROUP_LABEL_BACKDROP_CLASS, GROUP_LABEL_FOR_ATTRIBUTE, GROUP_LABEL_LAYER_CLASS, raiseGroupLabels } from './group-label.utils';
+import { GROUP_LABEL_BACKDROP_CLASS, GROUP_LABEL_FOR_ATTRIBUTE, GROUP_LABEL_LAYER_CLASS, GROUP_LABEL_RAISE_PX, raiseGroupLabels } from './group-label.utils';
 
 /** A trimmed copy of the structure Mermaid renders for one group with one arrow and one node. */
 const MERMAID_GROUP_SVG = `
@@ -46,21 +46,21 @@ describe('raiseGroupLabels', () => {
     expect(label.getAttribute(GROUP_LABEL_FOR_ATTRIBUTE)).toBe('flowchart-trip1');
   });
 
-  it('keeps the title where Mermaid placed it', () => {
+  it('lifts the title straight up from where Mermaid placed it', () => {
     const before = host.querySelector('.cluster-label p')!.getBoundingClientRect();
     raiseGroupLabels(host);
     const after = host.querySelector('.cluster-label p')!.getBoundingClientRect();
     expect(after.x).toBeCloseTo(before.x, 1);
-    expect(after.y).toBeCloseTo(before.y, 1);
+    expect(after.y).toBeCloseTo(before.y - GROUP_LABEL_RAISE_PX, 1);
   });
 
-  it('folds ancestor transforms into the title so it does not move', () => {
+  it('folds ancestor transforms into the title so only the lift moves it', () => {
     host.querySelector('g.cluster')!.setAttribute('transform', 'translate(10, 20)');
     const before = host.querySelector('.cluster-label p')!.getBoundingClientRect();
     raiseGroupLabels(host);
     const after = host.querySelector('.cluster-label p')!.getBoundingClientRect();
     expect(after.x).toBeCloseTo(before.x, 1);
-    expect(after.y).toBeCloseTo(before.y, 1);
+    expect(after.y).toBeCloseTo(before.y - GROUP_LABEL_RAISE_PX, 1);
   });
 
   it('puts a padded pill behind the title text', () => {

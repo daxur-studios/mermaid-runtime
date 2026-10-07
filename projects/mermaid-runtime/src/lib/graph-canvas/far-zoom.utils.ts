@@ -1,5 +1,4 @@
 import type { MermaidRuntime } from "../task-graph-model";
-import { formatDurationMs, getLiveNodeTimeMs } from "./run-summary.utils";
 
 /** How close the viewer is: `near` shows full node text, `far` shows one short line per node. */
 export type ZoomBand = "near" | "far";
@@ -21,6 +20,14 @@ export const DEFAULT_FAR_ZOOM_SCALE = 0.6;
  */
 export const FAR_ZOOM_EXIT_FACTOR = 1.2;
 
+/**
+ * Most characters of a node's name shown in the middle of it when zoomed far out and it has
+ * nothing else to show (no icon, chip, percentage or time).
+ *
+ * VALUE: Keeps such a step from being a blank box, while short enough to be drawn large.
+ */
+export const FAR_NAME_MAX_CHARS = 10;
+
 /** Picks the band for a zoom, keeping the current band inside the gap around the threshold. A null threshold means always near. */
 export function nextZoomBand(current: ZoomBand, scale: number, farBelowScale: number | null): ZoomBand {
   if (farBelowScale === null) return "near";
@@ -28,21 +35,21 @@ export function nextZoomBand(current: ZoomBand, scale: number, farBelowScale: nu
   return scale > farBelowScale * FAR_ZOOM_EXIT_FACTOR ? "near" : "far";
 }
 
+/** Cuts a node's name to {@link FAR_NAME_MAX_CHARS} characters, ending in an ellipsis when it was cut. */
+export function shortenNodeName(title: string): string {
+  const name = title.trim();
+  if (name.length <= FAR_NAME_MAX_CHARS) return name;
+  return `${name.slice(0, FAR_NAME_MAX_CHARS - 1).trimEnd()}…`;
+}
+
 /**
- * The text a step shows when zoomed far out.
+ * The percentage and time line a step shows in the middle of its node when zoomed far out.
  *
  * VALUE: A host's `farLabel` wins when it returns a string (an empty string means
- * "show nothing"); null or undefined falls back to the default. The default is
- * `NN%` while a step reports progress, a counting-up time while it runs without
- * progress, its time once done or failed, and nothing before it starts.
+ * "show no line"); null or undefined falls back to `readout`, the node's own
+ * percentage and time (see `composeNodeReadout`).
  */
-export function resolveFarLabel(
-  node: MermaidRuntime.Node,
-  nowMs: number,
-  override?: ((node: MermaidRuntime.Node) => string | null | undefined) | null,
-): string {
+export function resolveFarLabel(node: MermaidRuntime.Node, readout: string, override?: ((node: MermaidRuntime.Node) => string | null | undefined) | null): string {
   const custom = override?.(node);
-  if (typeof custom === "string") return custom;
-  if (node.status === "running" && typeof node.progressPercent === "number") return `${Math.round(node.progressPercent)}%`;
-  return formatDurationMs(getLiveNodeTimeMs(node, nowMs));
+  return typeof custom === "string" ? custom : readout;
 }

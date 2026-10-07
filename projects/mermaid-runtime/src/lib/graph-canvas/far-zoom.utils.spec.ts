@@ -1,5 +1,5 @@
 import type { MermaidRuntime } from '../task-graph-model';
-import { nextZoomBand, resolveFarLabel } from './far-zoom.utils';
+import { FAR_NAME_MAX_CHARS, nextZoomBand, resolveFarLabel, shortenNodeName } from './far-zoom.utils';
 
 const node = (extra: Partial<MermaidRuntime.Node>): MermaidRuntime.Node => ({ id: 'a', title: 'A', status: 'undone', ...extra });
 
@@ -19,21 +19,35 @@ describe('nextZoomBand', () => {
   });
 });
 
-describe('resolveFarLabel', () => {
-  it('shows percent while a step reports progress, its time when done, and nothing before it starts', () => {
-    expect(resolveFarLabel(node({ status: 'running', progressPercent: 42.4 }), 0)).toBe('42%');
-    expect(resolveFarLabel(node({ status: 'complete', durationMs: 2300 }), 0)).toBe('2.3 s');
-    expect(resolveFarLabel(node({ status: 'undone', durationMs: 2300 }), 0)).toBe('');
+describe('shortenNodeName', () => {
+  it('leaves a short name alone and trims stray spaces', () => {
+    expect(shortenNodeName('  Plan  ')).toBe('Plan');
+    expect(shortenNodeName('x'.repeat(FAR_NAME_MAX_CHARS))).toBe('x'.repeat(FAR_NAME_MAX_CHARS));
   });
 
-  it('counts a running step without progress up from its start', () => {
-    const startedAt = '2026-10-07T10:00:00.000Z';
-    expect(resolveFarLabel(node({ status: 'running', startedAt }), Date.parse(startedAt) + 4000)).toBe('4.0 s');
+  it('cuts a long name to the limit, ending in an ellipsis', () => {
+    const short = shortenNodeName('Create trip in legacy UI');
+    expect(short.length).toBeLessThanOrEqual(FAR_NAME_MAX_CHARS);
+    expect(short.endsWith('…')).toBe(true);
+    expect(short).toBe('Create tr…');
+  });
+
+  it('does not leave a space before the ellipsis', () => {
+    expect(shortenNodeName('Plan approach now')).toBe('Plan appr…');
+    expect(shortenNodeName('Run the tests now')).toBe('Run the t…');
+    expect(shortenNodeName('Plan a b c d e f g')).toBe('Plan a b…');
+  });
+});
+
+describe('resolveFarLabel', () => {
+  it('uses the percentage and time line of the node itself', () => {
+    expect(resolveFarLabel(node({ status: 'running' }), '42% · 3.5 s')).toBe('42% · 3.5 s');
+    expect(resolveFarLabel(node({}), '')).toBe('');
   });
 
   it('lets the host override, including with an empty string, and falls back on null', () => {
-    expect(resolveFarLabel(node({ status: 'complete', durationMs: 900 }), 0, () => 'OK')).toBe('OK');
-    expect(resolveFarLabel(node({ status: 'complete', durationMs: 900 }), 0, () => '')).toBe('');
-    expect(resolveFarLabel(node({ status: 'complete', durationMs: 900 }), 0, () => null)).toBe('900 ms');
+    expect(resolveFarLabel(node({ status: 'complete' }), '900 ms', () => 'OK')).toBe('OK');
+    expect(resolveFarLabel(node({}), '900 ms', () => '')).toBe('');
+    expect(resolveFarLabel(node({}), '900 ms', () => null)).toBe('900 ms');
   });
 });

@@ -6,12 +6,13 @@
 .toolbar { background: #101729; }
 label { display: flex; gap: .3rem; flex-direction: column; color: #b5c0d3; font-size: .75rem; }
 label.check { flex-direction: row; align-items: center; gap: .3rem; }
-button, select, input[type=text] { background: #1b2540; color: #e2e8f0; border: 1px solid #415171; border-radius: .4rem; padding: .4rem .55rem; }
+button, select, input[type=text], input[type=number] { background: #1b2540; color: #e2e8f0; border: 1px solid #415171; border-radius: .4rem; padding: .4rem .55rem; }
 button { cursor: pointer; font-size: .8rem; }
 button.primary { background: #5752c6; border-color: #8a85ee; }
 button:disabled, select:disabled, input:disabled { opacity: .5; cursor: default; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 3px; }
 input[type=checkbox] { accent-color: #a5b4fc; }
+input[type=number] { width: 6.5rem; }
 .outcome { font-size: .85rem; font-weight: 650; }
 .muted, small { color: #99a9c1; font-size: .75rem; }
 .legend { display: flex; align-items: center; gap: .4rem; margin-left: auto; font-size: .7rem; color: #b5c0d3; }
