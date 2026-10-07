@@ -10,6 +10,9 @@ const BAND_TIMEOUT_MS = 5_000;
 /** Zoom-out clicks that are enough to pass the far-zoom threshold from a fitted view. */
 const ZOOM_OUT_CLICKS = 8;
 
+/** Longest wait (ms) for the band to settle after one zoom-in click, before clicking again. */
+const ZOOM_SETTLE_MS = 300;
+
 const CANVAS = 'mr-graph-canvas';
 const TIME_PATTERN = /^\d+(\.\d)? (ms|s)$|^\d+m \d{2}s$/;
 
@@ -23,6 +26,14 @@ async function openGroupedRun(page: Page): Promise<void> {
 
 async function advance(page: Page, ticks: number): Promise<void> {
   for (let tick = 0; tick < ticks; tick++) await page.getByRole('button', { name: 'Advance tick' }).click();
+}
+
+/** How much bigger than normal the first group title's pill is drawn (1 = normal). */
+function readGroupLabelScale(page: Page): Promise<number> {
+  return page.locator('.mr-group-labels .cluster-label > rect.mr-group-label-backdrop').first().evaluate((backdrop) => {
+    const transform = getComputedStyle(backdrop).transform;
+    return transform === 'none' ? 1 : new DOMMatrix(transform).a;
+  });
 }
 
 test('finished steps and groups show their time, and a tick never re-renders the graph', async ({ page }) => {
@@ -58,9 +69,14 @@ test('times that are off reserve no room and draw nothing', async ({ page }) => 
 test('zoomed far out, nodes show a large time instead of their text, and come back up close', async ({ page }) => {
   await openGroupedRun(page);
   await advance(page, TICKS_MID_RUN);
+  await waitForStableGraph(page);
   await page.getByTitle('Fit all').click();
-  await expect(page.locator(CANVAS)).toHaveAttribute('data-zoom-band', 'near', { timeout: BAND_TIMEOUT_MS });
+  await expect(async () => {
+    await page.getByTitle('Zoom in').click();
+    await expect(page.locator(CANVAS)).toHaveAttribute('data-zoom-band', 'near', { timeout: ZOOM_SETTLE_MS });
+  }, 'zooming in reaches the near band').toPass({ timeout: BAND_TIMEOUT_MS });
   await expect(page.locator('.mr-node-far').first()).toBeHidden();
+  expect(await readGroupLabelScale(page), 'group titles are normal size up close').toBe(1);
 
   for (let click = 0; click < ZOOM_OUT_CLICKS; click++) await page.getByTitle('Zoom out').click();
   await expect(page.locator(CANVAS)).toHaveAttribute('data-zoom-band', 'far', { timeout: BAND_TIMEOUT_MS });
@@ -69,6 +85,7 @@ test('zoomed far out, nodes show a large time instead of their text, and come ba
   expect(far.some((label) => label.text === ''), 'waiting steps show nothing').toBe(true);
   const labelOpacity = await page.locator('.node foreignObject').first().evaluate((element) => getComputedStyle(element).opacity);
   expect(labelOpacity, 'the small text is hidden').toBe('0');
+  expect(await readGroupLabelScale(page), 'group titles grow when zoomed far out').toBeGreaterThan(1);
 
   for (let click = 0; click < ZOOM_OUT_CLICKS * 2; click++) await page.getByTitle('Zoom in').click();
   await expect(page.locator(CANVAS)).toHaveAttribute('data-zoom-band', 'near', { timeout: BAND_TIMEOUT_MS });

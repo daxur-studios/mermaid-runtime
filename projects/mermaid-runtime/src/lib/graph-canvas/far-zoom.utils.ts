@@ -7,10 +7,11 @@ export type ZoomBand = "near" | "far";
 /**
  * Zoom (scale) below which nodes switch to their far text, unless the host sets another.
  *
- * VALUE: Node text is about 12 px at scale 1; below this it is under 5 px and no
- * longer readable, which is the point where a time or percentage helps more.
+ * VALUE: Node text is about 12 px at scale 1; below this it is about 7 px, already
+ * hard to read, which is the point where a time or percentage helps more. Near text
+ * returns above this times {@link FAR_ZOOM_EXIT_FACTOR}.
  */
-export const DEFAULT_FAR_ZOOM_SCALE = 0.4;
+export const DEFAULT_FAR_ZOOM_SCALE = 0.6;
 
 /**
  * How much the zoom must rise above the far threshold before near text returns.

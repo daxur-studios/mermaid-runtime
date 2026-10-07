@@ -471,6 +471,16 @@
   opacity: 0;
 }
 
+// Far-zoom group titles: the title, its pill and its time pill grow together about the
+// title's centre (--mr-group-pivot, set in group-label.utils.ts) so they stay about
+// --mr-group-far-px tall on screen as the zoom drops. 12.5 is the title's own size in
+// scene px; the scale never goes below 1 and stops at the smaller of
+// --mr-group-fit-scale (set per title from its group's width) and --mr-group-far-max-scale.
+:host([data-zoom-band='far']) ::ng-deep .mermaid g.cluster-label > * {
+  transform-origin: var(--mr-group-pivot, 0 0);
+  transform: scale(max(1, min(calc(var(--mr-group-far-px, 16) / (var(--zoom-scale, 1) * 12.5)), var(--mr-group-fit-scale, 3), var(--mr-group-far-max-scale, 3))));
+}
+
 // Group time pill, drawn beside the raised group title (shares the title pill's look).
 :host ::ng-deep .mermaid .mr-group-time text {
   fill: var(--mat-sys-on-surface-variant, #94a3b8);

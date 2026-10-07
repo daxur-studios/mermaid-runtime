@@ -37,7 +37,7 @@ test('a step that just became active does not look selected', async ({ page }) =
 
 test('the selection stays on the clicked step while the run moves on', async ({ page }) => {
   await openWork(page);
-  await page.locator(`${GRAPH} g.node`).first().click({ force: true });
+  await page.locator(`${GRAPH} g.node`).first().dispatchEvent('click');
   await expect(page.locator(SELECTED_RING)).toHaveCount(1);
   const picked = await ringedNodeText(page);
 
@@ -52,7 +52,7 @@ test('clicking the background clears the selection, dragging it does not', async
   const cornerX = viewport.x + CORNER_INSET_PX;
   const cornerY = viewport.y + viewport.height - CORNER_INSET_PX * 4;
 
-  await page.locator(`${GRAPH} g.node`).first().click({ force: true });
+  await page.locator(`${GRAPH} g.node`).first().dispatchEvent('click');
   await expect(page.locator(SELECTED_RING)).toHaveCount(1);
 
   await page.mouse.move(cornerX, cornerY);

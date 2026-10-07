@@ -20,6 +20,29 @@ export const GROUP_LABEL_BACKDROP_CLASS = "mr-group-label-backdrop";
 export const GROUP_LABEL_FOR_ATTRIBUTE = "data-mr-group-label-for";
 
 /**
+ * CSS custom property on a raised label holding the centre of its text, in the label's own coordinates.
+ *
+ * VALUE: Lets the stylesheet enlarge the title, its pill and its time pill around one
+ * shared point when zoomed far out, so they grow in place instead of drifting apart.
+ */
+export const GROUP_LABEL_PIVOT_PROPERTY = "--mr-group-pivot";
+
+/**
+ * CSS custom property on a raised label holding the most it may be enlarged before it is wider than its group.
+ *
+ * VALUE: Far out, titles of narrow groups stop growing at the group's edges instead of
+ * running over the next group's title.
+ */
+export const GROUP_LABEL_FIT_SCALE_PROPERTY = "--mr-group-fit-scale";
+
+/**
+ * Room kept beside a title for its time pill when working out how far it may grow, in scene px.
+ *
+ * VALUE: A typical pill ("1m 05s") is about this wide, so title plus pill still fit the group.
+ */
+const GROUP_LABEL_TIME_ALLOWANCE_PX = 56;
+
+/**
  * Horizontal space between a group title's text and the edge of its pill, in scene px.
  *
  * VALUE: Enough room that an arrow passing behind the pill stops clearly
@@ -68,8 +91,9 @@ export function raiseGroupLabels(container: Element): void {
       label.setAttribute("transform", collectTransformsUpTo(label, root));
       // Measure before moving: the label is laid out where Mermaid put it.
       const box = readLabelTextBox(label);
+      const groupWidth = cluster?.querySelector<SVGRectElement>(":scope > rect")?.width.baseVal.value ?? 0;
       layer.appendChild(label);
-      if (box) insertLabelBackdrop(label, box);
+      if (box) insertLabelBackdrop(label, box, groupWidth);
     }
   }
 }
@@ -108,7 +132,7 @@ function readLabelTextBox(label: SVGGElement): DOMRect | null {
 }
 
 /** Puts a padded {@link GROUP_LABEL_BACKDROP_CLASS} rect behind a label's text. */
-function insertLabelBackdrop(label: SVGGElement, textBox: DOMRect): void {
+function insertLabelBackdrop(label: SVGGElement, textBox: DOMRect, groupWidth: number): void {
   let backdrop = label.querySelector<SVGRectElement>(`:scope > rect.${GROUP_LABEL_BACKDROP_CLASS}`);
   if (!backdrop) {
     backdrop = label.ownerDocument.createElementNS(SVG_NAMESPACE, "rect") as SVGRectElement;
@@ -119,4 +143,11 @@ function insertLabelBackdrop(label: SVGGElement, textBox: DOMRect): void {
   backdrop.setAttribute("y", String(textBox.y - GROUP_LABEL_PADDING_Y_PX));
   backdrop.setAttribute("width", String(textBox.width + 2 * GROUP_LABEL_PADDING_X_PX));
   backdrop.setAttribute("height", String(textBox.height + 2 * GROUP_LABEL_PADDING_Y_PX));
+  const pivotX = textBox.x + textBox.width / 2;
+  const pivotY = textBox.y + textBox.height / 2;
+  label.style.setProperty(GROUP_LABEL_PIVOT_PROPERTY, `${pivotX}px ${pivotY}px`);
+  if (groupWidth > 0) {
+    const pillWidth = textBox.width + 2 * GROUP_LABEL_PADDING_X_PX + GROUP_LABEL_TIME_ALLOWANCE_PX;
+    label.style.setProperty(GROUP_LABEL_FIT_SCALE_PROPERTY, String(Math.max(1, groupWidth / pillWidth)));
+  }
 }
