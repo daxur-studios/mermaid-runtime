@@ -16,5 +16,7 @@ export class App {
     { path: '/constrained', label: 'Constrained' },
     { path: '/subgraphs', label: 'Subgraphs & groups' },
     { path: '/replay', label: 'Replay' },
+    { path: '/system-overview', label: 'System overview' },
+    { path: '/estate', label: 'Estate map' },
   ];
 }

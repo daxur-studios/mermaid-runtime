@@ -9,6 +9,16 @@ html { @include mat.theme((color: (primary: mat.$violet-palette, theme-type: dar
   --app-color-active: #818cf8; --app-color-active-bg: #292e61;
   color-scheme: dark;
 }
+// Host-defined node status for the system overview: `degraded` (amber), mapped via `statusStyles`.
+.mermaid .node.degraded .basic,
+.mermaid .node.degraded .label-container,
+.mermaid .node.degraded polygon:not(.mr-node-decoration),
+.mermaid .node.degraded rect:not(.sg-detailed-box):not(.mr-node-decoration) {
+  fill: var(--app-color-warn-bg) !important;
+  stroke: var(--app-color-warn) !important;
+  stroke-width: 2.5px !important;
+}
+.mermaid .node.degraded span:not(.mr-node-subtitle):not(.mr-node-param):not(.mr-node-chip):not(.mr-node-icon) { color: #e2e8f0 !important; }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: #0b1020; color: #e2e8f0; font-family: Inter, Roboto, system-ui, sans-serif; }

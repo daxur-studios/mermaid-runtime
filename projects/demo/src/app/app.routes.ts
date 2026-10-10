@@ -7,6 +7,8 @@ export const routes: Routes = [
   { path: 'fullscreen', loadComponent: () => import('./pages/fullscreen.page').then(m => m.FullscreenPage) },
   { path: 'constrained', loadComponent: () => import('./pages/constrained.page').then(m => m.ConstrainedPage) },
   { path: 'subgraphs', loadComponent: () => import('./pages/subgraphs.page').then(m => m.SubgraphsPage) },
+  { path: 'system-overview', loadComponent: () => import('./pages/system-overview.page').then(m => m.SystemOverviewPage) },
+  { path: 'estate', loadComponent: () => import('./pages/estate.page').then(m => m.EstatePage) },
   { path: 'replay', loadComponent: () => import('./pages/replay.page').then(m => m.ReplayPage) },
   { path: '', pathMatch: 'full', redirectTo: 'fullscreen' },
   { path: '**', redirectTo: 'fullscreen' },
