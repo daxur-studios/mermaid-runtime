@@ -40,3 +40,6 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Local-only files (packed tarballs and similar), never committed
+/ignore/

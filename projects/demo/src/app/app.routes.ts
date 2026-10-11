@@ -9,6 +9,7 @@ export const routes: Routes = [
   { path: 'subgraphs', loadComponent: () => import('./pages/subgraphs.page').then(m => m.SubgraphsPage) },
   { path: 'system-overview', loadComponent: () => import('./pages/system-overview.page').then(m => m.SystemOverviewPage) },
   { path: 'estate', loadComponent: () => import('./pages/estate.page').then(m => m.EstatePage) },
+  { path: 'cards', loadComponent: () => import('./pages/cards/cards.page').then(m => m.CardsPage) },
   { path: 'replay', loadComponent: () => import('./pages/replay.page').then(m => m.ReplayPage) },
   { path: '', pathMatch: 'full', redirectTo: 'fullscreen' },
   { path: '**', redirectTo: 'fullscreen' },

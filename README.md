@@ -262,7 +262,54 @@ Scrubs/plays through a recorded `MermaidRuntime.ExecutionEvent[]` history and re
 
 `(stateChange)` emits `{ nodes, currentNodeId, currentEvent, isReplaying }` — feed `nodes`/`currentNodeId` straight into `<mr-task-graph>`'s `[nodes]`/`[currentNodeId]` to drive the same visuals a live run would.
 
+### `GraphCardComponent` & `GraphCardListComponent` — run lists & boards
+
+Render collections or arrays of task graphs as cards in a responsive grid or list, complete with a mini flowchart header, automatic progress derivation, live status badges, and content projection slots:
+
+```html
+<mr-graph-card-list [layout]="'grid'" [columns]="'auto'">
+  @for (run of runs(); track run.id) {
+    <mr-graph-card
+      [graph]="run.graph"
+      [title]="run.name"
+      [subtitle]="run.description"
+      [previewMode]="'simple'"
+      (cardClick)="onSelectRun(run.id)"
+    >
+      <!-- Header actions overlay -->
+      <button header-actions (click)="onTune(run.id, $event)">⚙</button>
+
+      <!-- Custom badge override -->
+      <span badge class="priority-pill">{{ run.priority }}</span>
+
+      <!-- Metadata chips -->
+      <div meta>
+        <span>Branch: {{ run.branch }}</span>
+        <span>Duration: {{ run.duration }}</span>
+      </div>
+
+      <!-- Action buttons -->
+      <div actions>
+        <button (click)="onInspect(run.id, $event)">Inspect</button>
+      </div>
+    </mr-graph-card>
+  }
+
+  <!-- Empty state slot -->
+  <div empty class="empty-state">No workflows found.</div>
+</mr-graph-card-list>
+```
+
+- **Mini preview header:** Renders either a live mini graph via `[graph]` (in `'simple'` or `'mermaid'` mode, `'LR'` direction by default) or a static image via `[headerImageSrc]`.
+- **Progress bar:** Automatically derived from node settlement (`complete`, `done`, `skipped`), or manually passed via `[progress]`.
+- **Pure helpers:**
+  - `computeGraphProgress(graph)`: returns `{ total, done, running, failed, percent }`.
+  - `resetGraphStatuses(graph, status?)`: clones a graph with all node statuses reset to `'undone'` (or target status) for template/catalog views.
+- **Card custom properties:** `--mr-card-bg`, `--mr-card-border`, `--mr-card-border-radius`, `--mr-card-header-bg`, `--mr-card-header-height` (default: 56px), `--mr-card-padding`, `--mr-card-title-color`, `--mr-card-subtitle-color`, `--mr-card-hover-border`, `--mr-card-selected-border`, `--mr-card-selected-bg`, `--mr-card-progress-track-bg`, `--mr-card-progress-fill-color`.
+- **List container custom properties:** `--mr-card-list-gap` (default: 16px), `--mr-card-min-width` (default: 280px).
+
 ## Data model
+
 
 Everything lives in the `MermaidRuntime` namespace:
 

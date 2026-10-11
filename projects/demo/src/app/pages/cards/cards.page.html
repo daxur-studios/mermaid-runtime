@@ -1,0 +1,198 @@
+<div class="cards-demo-container">
+  <!-- Page Header -->
+  <header class="cards-demo-header">
+    <div class="cards-demo-header__titles">
+      <h1>Mermaid Runtime Cards & Lists</h1>
+      <p>
+        Reusable <code>&lt;mr-graph-card&gt;</code> and <code>&lt;mr-graph-card-list&gt;</code> components for
+        rendering workflow collections with mini flowchart headers, live status, and custom projection slots.
+      </p>
+    </div>
+
+    <!-- Main Toolbar -->
+    <div class="cards-demo-toolbar">
+      <!-- Layout & Columns -->
+      <div class="toolbar-group">
+        <label class="control-label">Layout:</label>
+        <button
+          type="button"
+          class="toggle-btn"
+          [class.active]="layout() === 'grid'"
+          (click)="layout.set('grid')"
+        >
+          Grid
+        </button>
+        <button
+          type="button"
+          class="toggle-btn"
+          [class.active]="layout() === 'list'"
+          (click)="layout.set('list')"
+        >
+          List (Horizontal)
+        </button>
+      </div>
+
+      @if (layout() === 'grid') {
+        <div class="toolbar-group">
+          <label class="control-label">Columns:</label>
+          <select
+            class="control-select"
+            [ngModel]="columns()"
+            (ngModelChange)="columns.set($event)"
+          >
+            <option value="auto">Auto-fill</option>
+            <option [ngValue]="2">2 Columns</option>
+            <option [ngValue]="3">3 Columns</option>
+            <option [ngValue]="4">4 Columns</option>
+          </select>
+        </div>
+      }
+
+      <!-- Mini Header Render Mode -->
+      <div class="toolbar-group">
+        <label class="control-label">Header Mode:</label>
+        <button
+          type="button"
+          class="toggle-btn"
+          [class.active]="previewMode() === 'simple'"
+          (click)="previewMode.set('simple')"
+          title="Circular nodes with connecting lines (Daxur Daemon Kanban style)"
+        >
+          Simple
+        </button>
+        <button
+          type="button"
+          class="toggle-btn"
+          [class.active]="previewMode() === 'mermaid'"
+          (click)="previewMode.set('mermaid')"
+          title="Full SVG Mermaid render"
+        >
+          Mermaid
+        </button>
+      </div>
+
+      <!-- Randomization & Topology Actions -->
+      <div class="toolbar-group">
+        <button type="button" class="btn-randomize" (click)="randomizeFlows()" title="Randomize flow topologies for all cards">
+          🎲 Randomize Flows
+        </button>
+        <button type="button" class="action-btn" (click)="addRandomCard()" title="Add a new card with a random non-linear graph">
+          + Add Card
+        </button>
+        <button type="button" class="action-btn action-btn--advance" (click)="simulateStep()" title="Advance step on running tasks">
+          ▶ Advance Step
+        </button>
+        <button type="button" class="btn-subtle" (click)="resetFlows()" title="Reset to initial diverse set">
+          Reset
+        </button>
+      </div>
+
+      <div class="toolbar-group toolbar-group--checkbox">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="showEmpty()"
+            (change)="showEmpty.set(!showEmpty())"
+          />
+          Show Empty State
+        </label>
+      </div>
+    </div>
+
+    <!-- Quick Topology Preset Filter Bar -->
+    <div class="topology-preset-bar">
+      <span class="preset-label">Test Specific Topology:</span>
+      <button type="button" class="preset-pill" (click)="applyTopology('diamond')">Diamond (Split & Join)</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('fan-out-in')">Fan-Out / Fan-In</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('parallel-checks')">Validation Matrix (5 Parallel)</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('bypass')">Bypass Shortcut</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('mesh')">Mesh (2-to-3)</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('tree')">Tree Branching</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('conditional-fallback')">Conditional Fallback</button>
+      <button type="button" class="preset-pill" (click)="applyTopology('random-dag')">Random DAG</button>
+    </div>
+
+    <!-- Status Banner -->
+    <div class="status-banner">
+      <span><b>Active Selection:</b> {{ selectedId() || 'None' }}</span>
+      <span class="status-divider">•</span>
+      <span><b>Last Action:</b> {{ lastAction() }}</span>
+    </div>
+  </header>
+
+  <!-- Card List / Collection -->
+  <main class="cards-demo-main">
+    <mr-graph-card-list
+      [layout]="layout()"
+      [columns]="columns()"
+      [empty]="showEmpty()"
+      emptyText="No active workflow runs found in this environment."
+    >
+      <!-- Custom Empty State Template -->
+      <div empty class="custom-empty-state">
+        <div class="empty-icon">📂</div>
+        <h3>No Workflows Available</h3>
+        <p>Uncheck "Show Empty State" above to restore the demo dataset.</p>
+      </div>
+
+      <!-- Render array of items -->
+      @for (item of runs(); track item.id) {
+        <mr-graph-card
+          [graph]="item.graph"
+          [headerImageSrc]="item.imageSrc ?? null"
+          [title]="item.title"
+          [subtitle]="item.subtitle"
+          [previewMode]="previewMode()"
+          [selected]="selectedId() === item.id"
+          [orientation]="layout() === 'list' ? 'horizontal' : 'vertical'"
+          (cardClick)="selectRun(item.id)"
+        >
+          <!-- Header Actions Overlay -->
+          <div header-actions class="card-header-actions">
+            <button
+              type="button"
+              class="icon-btn"
+              title="Quick tune"
+              (click)="triggerAction(item.id, 'tune', $event)"
+            >
+              ⚙
+            </button>
+          </div>
+
+          <!-- Status / Priority Badge -->
+          @if (item.priority) {
+            <span badge class="badge-priority" [class.badge-priority--critical]="item.priority === 'critical'">
+              {{ item.priority }}
+            </span>
+          }
+
+          <!-- Metadata row -->
+          <div meta class="card-meta-row">
+            <span class="topology-tag">{{ item.topologyName }}</span>
+            <span class="meta-item">🌿 {{ item.branch }}</span>
+            <span class="meta-item">⏱ {{ item.duration }}</span>
+            <span class="meta-item id-tag">#{{ item.id }}</span>
+          </div>
+
+          <!-- Footer Actions toolbar -->
+          <div actions class="card-actions-bar">
+            <button
+              type="button"
+              class="btn-secondary"
+              (click)="triggerAction(item.id, 'inspect', $event)"
+            >
+              Inspect
+            </button>
+            <button
+              type="button"
+              class="btn-primary"
+              (click)="triggerAction(item.id, 'retry', $event)"
+            >
+              Re-run
+            </button>
+          </div>
+        </mr-graph-card>
+      }
+    </mr-graph-card-list>
+  </main>
+</div>

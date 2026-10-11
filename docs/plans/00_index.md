@@ -50,4 +50,6 @@ These explore alternatives for a design question (3–4 options, a recommendatio
 | [12 Node kinds](12_node-kind-registry-options.md) | Host-side chip and tone vs registry keyed on `node.type` vs registry plus resolver vs classes only, for shape, chip and tone per kind | In progress: B picked, stacked outline dropped; icon, chip, registry and tone built. Cylinder and pre-made kinds next |
 | [14 Estate map](14_estate-map-options.md) | Feature launchpad vs sync-link map vs estate explorer vs agent-first graph with thin UI, for a ~500-repo Kafka estate | Waiting for the user's pick; recommendation A on D's graph JSON with B's sync-link edges |
 | [15 Ideal estate model](15_ideal-estate-model.md) | Target data contract (components, links, features, health, environments) and an adoption ladder to compare real data against | Proposed; PoC built in the demo ([runbook 10](../runbook/10_estate-map-poc.md)); user checking it against work data |
-| [13 Run banner, timing and far zoom](13_run-banner-timing-and-far-zoom-options.md) | Completed-state behaviour vs where times show vs what far zoom shows, plus the re-center prompt | Built: all picks taken (banner and pill, right-edge times, far text with override); unit 115/115, e2e 26/26 |
+| [16 Graph card and list component](16_graph-card-options.md) | Integrated card + list wrapper vs compound primitives vs data-driven list vs card only | Built: Option A with mini flowchart header and slots; unit 134/134, demo /cards |
+
+

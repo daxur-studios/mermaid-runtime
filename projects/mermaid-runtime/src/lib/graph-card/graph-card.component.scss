@@ -1,0 +1,267 @@
+:host {
+  --mr-card-bg: var(--mat-sys-surface-container, #1e2235);
+  --mr-card-border: 1px solid var(--mat-sys-outline-variant, rgba(255, 255, 255, 0.12));
+  --mr-card-border-radius: var(--mat-sys-corner-small, 8px);
+  --mr-card-header-bg: var(--mat-sys-surface-container-low, #141724);
+  --mr-card-header-height: 56px;
+  --mr-card-header-width: 140px;
+  --mr-card-padding: 12px 14px;
+  --mr-card-title-color: var(--mat-sys-on-surface, #e2e8f0);
+  --mr-card-subtitle-color: var(--mat-sys-on-surface-variant, #94a3b8);
+  --mr-card-meta-color: var(--mat-sys-on-surface-variant, #94a3b8);
+  --mr-card-hover-border: var(--mat-sys-primary, #6366f1);
+  --mr-card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  --mr-card-selected-border: var(--mat-sys-primary, #6366f1);
+  --mr-card-selected-bg: var(--mat-sys-surface-container-high, #252a40);
+  --mr-card-progress-height: 3px;
+  --mr-card-progress-track-bg: var(--mat-sys-surface-container-highest, rgba(255, 255, 255, 0.08));
+  --mr-card-progress-fill-color: var(--app-color-active, var(--mat-sys-primary, #3b82f6));
+
+  display: block;
+  position: relative;
+  background: var(--mr-card-bg);
+  border: var(--mr-card-border);
+  border-radius: var(--mr-card-border-radius);
+  overflow: hidden;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+:host(.mr-graph-card--interactive) {
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--mr-card-hover-border);
+    box-shadow: var(--mr-card-hover-shadow);
+  }
+}
+
+:host(.mr-graph-card--selected) {
+  border-color: var(--mr-card-selected-border);
+  background-color: var(--mr-card-selected-bg);
+}
+
+:host(.mr-graph-card--running) {
+  border-color: var(--app-color-active, #2196f3);
+}
+
+:host(.mr-graph-card--failed) {
+  border-color: var(--app-color-fail, #f44336);
+}
+
+:host(.mr-graph-card--complete) {
+  border-color: var(--app-color-pass, rgba(76, 175, 80, 0.5));
+}
+
+.mr-graph-card__inner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+:host(.mr-graph-card--horizontal) .mr-graph-card__inner {
+  flex-direction: row;
+
+  .mr-graph-card__header {
+    width: var(--mr-card-header-width);
+    height: auto;
+    min-height: 80px;
+    border-bottom: none;
+    border-right: 1px solid var(--mat-sys-outline-variant, rgba(255, 255, 255, 0.12));
+    flex-shrink: 0;
+  }
+
+  .mr-graph-card__progress {
+    display: none; // Progress hidden or repositioned in horizontal card
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Header Banner
+// -----------------------------------------------------------------------------
+
+.mr-graph-card__header {
+  position: relative;
+  height: var(--mr-card-header-height);
+  background: var(--mr-card-header-bg);
+  border-bottom: 1px solid var(--mat-sys-outline-variant, rgba(255, 255, 255, 0.12));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mr-graph-card__header-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mr-graph-card__header-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mr-graph-card__header-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+
+  &:empty {
+    display: none;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Progress Bar
+// -----------------------------------------------------------------------------
+
+.mr-graph-card__progress {
+  width: 100%;
+  height: var(--mr-card-progress-height);
+  background: var(--mr-card-progress-track-bg);
+  overflow: hidden;
+}
+
+.mr-graph-card__progress-fill {
+  height: 100%;
+  background: var(--mr-card-progress-fill-color);
+  transition: width 0.25s ease;
+
+  &--complete {
+    background: var(--app-color-pass, #4caf50);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Card Body & Content
+// -----------------------------------------------------------------------------
+
+.mr-graph-card__body {
+  padding: var(--mr-card-padding);
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mr-graph-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mr-graph-card__titles {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mr-graph-card__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--mr-card-title-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.mr-graph-card__subtitle {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--mr-card-subtitle-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.mr-graph-card__badge-slot {
+  flex-shrink: 0;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.mr-graph-card__status-chip {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1.2;
+  background: var(--mat-sys-surface-container-highest, rgba(255, 255, 255, 0.1));
+  color: var(--mat-sys-on-surface, #e2e8f0);
+
+  &--running {
+    background: var(--app-color-active-bg, rgba(33, 150, 243, 0.2));
+    color: var(--app-color-active, #2196f3);
+    border: 1px solid var(--app-color-active, #2196f3);
+  }
+
+  &--complete {
+    background: var(--app-color-pass-bg, rgba(76, 175, 80, 0.2));
+    color: var(--app-color-pass, #4caf50);
+  }
+
+  &--failed {
+    background: var(--app-color-fail-bg, rgba(244, 67, 54, 0.2));
+    color: var(--app-color-fail, #f44336);
+  }
+
+  &--idle {
+    color: var(--app-color-idle, #94a3b8);
+  }
+}
+
+.mr-graph-card__meta {
+  font-size: 0.75rem;
+  color: var(--mr-card-meta-color);
+
+  &:empty {
+    display: none;
+  }
+}
+
+.mr-graph-card__content {
+  font-size: 0.8125rem;
+  color: var(--mr-card-subtitle-color);
+
+  &:empty {
+    display: none;
+  }
+}
+
+.mr-graph-card__actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  &:empty {
+    display: none;
+  }
+}

@@ -1,0 +1,9 @@
+@if (empty()) {
+  <div class="mr-graph-card-list__empty">
+    <ng-content select="[empty]">
+      <p class="mr-graph-card-list__empty-text">{{ emptyText() }}</p>
+    </ng-content>
+  </div>
+} @else {
+  <ng-content></ng-content>
+}

@@ -1,4 +1,4 @@
-﻿export * from './lib/task-graph.component';
+export * from './lib/task-graph.component';
 export * from './lib/graph-canvas/graph-canvas.component';
 export * from './lib/graph-breadcrumb/graph-breadcrumb.component';
 export * from './lib/graph-inspector/graph-inspector.component';
@@ -18,4 +18,6 @@ export * from './lib/graph-canvas/run-summary.utils';
 export { DEFAULT_FAR_ZOOM_SCALE, type ZoomBand } from './lib/graph-canvas/far-zoom.utils';
 export * from './lib/graph-banner/graph-banner.component';
 export type { BannerAction, BannerKind, BannerMessage, HostBannerMessage } from './lib/graph-banner/banner-message.utils';
-
+export * from './lib/graph-card/graph-card.component';
+export * from './lib/graph-card/graph-card-list.component';
+export * from './lib/graph-card/graph-card.utils';

@@ -1,0 +1,85 @@
+<div class="mr-graph-card__inner">
+  <!-- Header / Banner Area -->
+  @if (hasHeader()) {
+    <div class="mr-graph-card__header">
+      <ng-content select="[header]">
+        @if (headerImageSrc(); as imgSrc) {
+          <img class="mr-graph-card__header-image" [src]="imgSrc" [alt]="headerAlt()" />
+        } @else if (graph(); as g) {
+          <mr-graph-preview
+            class="mr-graph-card__header-preview"
+            [graph]="g"
+            [mode]="previewMode()"
+            [direction]="previewDirection()"
+            [mermaidTheme]="mermaidTheme()"
+            [statusStyles]="statusStyles()"
+          />
+        }
+      </ng-content>
+
+      <!-- Overlay for header actions or badges -->
+      <div class="mr-graph-card__header-actions">
+        <ng-content select="[header-actions]" ngProjectAs="[header-actions]"></ng-content>
+      </div>
+    </div>
+  }
+
+  <!-- Progress Bar -->
+  @if (hasProgressBar()) {
+    <div
+      class="mr-graph-card__progress"
+      role="progressbar"
+      [attr.aria-valuenow]="resolvedProgress()"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      [attr.title]="resolvedProgress() + '% complete'"
+    >
+      <div
+        class="mr-graph-card__progress-fill"
+        [style.width.%]="resolvedProgress()"
+        [class.mr-graph-card__progress-fill--complete]="resolvedProgress() === 100"
+      ></div>
+    </div>
+  }
+
+  <!-- Body Content -->
+  <div class="mr-graph-card__body">
+    <!-- Title & Badge Row -->
+    <div class="mr-graph-card__title-row">
+      <div class="mr-graph-card__titles">
+        @if (title()) {
+          <h3 class="mr-graph-card__title" [title]="title()">{{ title() }}</h3>
+        }
+        @if (subtitle(); as sub) {
+          <p class="mr-graph-card__subtitle" [title]="sub">{{ sub }}</p>
+        }
+      </div>
+
+      <div class="mr-graph-card__badge-slot">
+        <ng-content select="[badge]" ngProjectAs="[badge]">
+          @if (resolvedStatus(); as st) {
+            <span class="mr-graph-card__status-chip" [class]="'mr-graph-card__status-chip--' + st">
+              {{ st }}
+            </span>
+          }
+        </ng-content>
+      </div>
+    </div>
+
+    <!-- Metadata Row -->
+    <div class="mr-graph-card__meta">
+      <ng-content select="[meta]" ngProjectAs="[meta]"></ng-content>
+    </div>
+
+    <!-- Custom Content / Body Slot -->
+    <div class="mr-graph-card__content">
+      <ng-content select="[body]"></ng-content>
+      <ng-content></ng-content>
+    </div>
+
+    <!-- Actions Footer Slot -->
+    <div class="mr-graph-card__actions">
+      <ng-content select="[actions]" ngProjectAs="[actions]"></ng-content>
+    </div>
+  </div>
+</div>

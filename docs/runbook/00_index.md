@@ -16,6 +16,7 @@ Started: 2026-10-05. Purpose: retain compact context, findings, decisions, and e
 | [08 Outstanding requests](08_outstanding-requests.md) | Backlog from the lab review: zoomed-out node detail, centred reset, "back to graph" prompt, node shapes, custom HTML nodes, "run complete" banner, title centring |
 | [09 System overview mockup](09_system-overview-mockup.md) | Demo page mapping an architecture/CMDB view onto nodes, groups and status; what works and what is missing |
 | [10 Estate map PoC](10_estate-map-poc.md) | Plan 15 contract built in the demo: feature selection, sync links with outbox hops, environments, simulated health run, copy links |
+| [11 Graph card component](11_graph-card-component.md) | Reusable mermaid runtime card & list component with mini preview header; option paper plan 16 |
 | [Plan index](../plans/00_index.md) | Proposed sequence of work and acceptance criteria |
 
 Two sessions drafted docs concurrently on 2026-10-05; they were merged into this single sequence the same day (the other session's kickoff/conventions drafts were folded into this index and [02 Repository baseline](02_repository-baseline.md); its option papers became plans 04–07).
@@ -60,5 +61,7 @@ Agents get these duties from [AGENTS.md](../../AGENTS.md#runbook-and-plans) (syn
 | 2026-10-08 | User described the real estate (≈500 repos, Kafka consoles, outbox, feature files, envs) and asked what is worth visualising now that agents do most work | [Option paper plan 14](../plans/14_estate-map-options.md) | User picks an option; then answer the open questions on edges and health |
 | 2026-10-08 | User: estate details may change; asked for the ideal approach to match at work | [Plan 15: target data contract, library mapping, health via the runner, adoption ladder, checklist](../plans/15_ideal-estate-model.md) | User compares with work data; answer the checklist |
 | 2026-10-08 | User asked for a PoC of plan 15 | [`/estate` demo built on the contract; adapter tests 13/13, demo build OK; one adapter bug found and fixed](10_estate-map-poc.md). Not committed | User review at `npm run demo`; then a loader for real files and one real feature |
+| 2026-10-10 | Built `<mr-graph-card>` and `<mr-graph-card-list>` components with mini flowchart headers and customizable slots | [Runbook 11](11_graph-card-component.md) and [Plan 16](../plans/16_graph-card-options.md); demo `/cards`; unit tests 134/134, build OK | User review at `npm run demo`; try in consumer apps |
 
 This is an evolving engineering runbook, not an operational procedure for executing or resetting an environment.
+

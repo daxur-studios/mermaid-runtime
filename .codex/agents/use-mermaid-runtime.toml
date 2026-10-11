@@ -18,6 +18,10 @@ import {
   GraphBreadcrumbComponent,   // <mr-graph-breadcrumb> — relocatable subgraph-depth trail
   GraphBreadcrumbEntry,       // { label, depth } — breadcrumb input shape
   TaskGraphReplayComponent,   // <mr-task-graph-replay> — timeline playback for recorded runs
+  GraphCardComponent,         // <mr-graph-card> — run card with mini preview header
+  GraphCardListComponent,     // <mr-graph-card-list> — responsive card list/grid container
+  computeGraphProgress,       // pure helper: { total, done, running, failed, percent }
+  resetGraphStatuses,         // pure helper: clones graph with reset node statuses
   MermaidRuntime,             // data model namespace
   TaskGraphRefLoader,         // interface for the ref-loader seam
   TaskGraphRefRequest,        // request shape passed to loadRef()

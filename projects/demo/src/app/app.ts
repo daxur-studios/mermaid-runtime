@@ -18,5 +18,6 @@ export class App {
     { path: '/replay', label: 'Replay' },
     { path: '/system-overview', label: 'System overview' },
     { path: '/estate', label: 'Estate map' },
+    { path: '/cards', label: 'Cards & lists' },
   ];
 }
