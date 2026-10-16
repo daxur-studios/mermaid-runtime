@@ -3,5 +3,8 @@
   "lib": {
     "entryFile": "src/public-api.ts"
   },
-  "dest": "../../dist/mermaid-runtime"
+  "dest": "../../dist/mermaid-runtime",
+  "assets": [
+    { "glob": "**/*", "input": "./.agents/skills", "output": "./skills" }
+  ]
 }
